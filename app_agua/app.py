@@ -27,7 +27,7 @@ def get_db():
         host="aws-1-us-east-1.pooler.supabase.com",
         dbname="postgres",
         user="postgres.dkualpdmiykqhdpfxzxu",
-        password="TU_PASSWORD_REAL",
+        password="Administrator21slag",
         port=6543,
         sslmode="require"
     )
