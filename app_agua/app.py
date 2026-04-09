@@ -16,13 +16,15 @@ import os
 
 import psycopg2
 
+import psycopg2
+
 def get_db():
     return psycopg2.connect(
-        host="db.dkualpdmiykqhdpfxzxu.supabase.co",
+        host="aws-0-us-east-1.pooler.supabase.com",  # 👈 CLAVE
         dbname="postgres",
-        user="postgres",
+        user="postgres.dkualpdmiykqhdpfxzxu",        # 👈 CAMBIA ESTO
         password="Administrator21slag",
-        port=6543,  # 👈 CAMBIO CLAVE
+        port=6543,
         sslmode="require"
     )
 
