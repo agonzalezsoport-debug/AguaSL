@@ -14,16 +14,17 @@ ESTADOS_VALIDOS = ["pendiente", "enproceso", "entregado", "cancelado"]
 import psycopg2
 import os
 
+import psycopg2
+
 def get_db():
     return psycopg2.connect(
         host="db.dkualpdmiykqhdpfxzxu.supabase.co",
         dbname="postgres",
         user="postgres",
         password="Administrator21slag",
-        port=5432,
+        port=6543,  # 👈 CAMBIO CLAVE
         sslmode="require"
     )
-
 # ================== INDEX ==================
 @app.route("/")
 def index():
