@@ -13,7 +13,7 @@ ESTADOS_VALIDOS = ["pendiente", "enproceso", "entregado", "cancelado"]
 # ================== DB (SUPABASE) ==================
 def get_db():
     return psycopg2.connect(
-        "postgresql://postgres:TU_PASSWORD@db.dkualpdmiykqhdpfxzxu.supabase.co:5432/postgres"
+        "postgresql://postgres:Administrator21slag@db.dkualpdmiykqhdpfxzxu.supabase.co:5432/postgres"
     )
 
 # ================== INDEX ==================
