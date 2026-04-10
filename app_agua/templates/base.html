@@ -12,20 +12,12 @@
 <header class="header-pro">
     <div class="header-content">
         <div class="logo">💧</div>
+
         <div class="titles">
             <h1>Distribución de agua SAN LUIS</h1>
             <span class="subtitle">Distribución de agua</span>
         </div>
     </div>
-
-    <div>
-        {% if session.get("admin") %}
-            <span class="badge">Admin</span>
-        {% elif session.get("cliente_id") %}
-            <span class="badge">Cliente</span>
-        {% endif %}
-    </div>
-</header>
 
     <div>
         {% if session.get("admin") %}
@@ -48,13 +40,16 @@
     {% endif %}
 
     {% if session.get("admin") %}
-        <a href="/dashboard">📊</a>
-        <a href="/clientes">👥</a>
-        <a href="/promos">🎁</a>
-        <a href="/pedidos">📋</a>
-        <a href="/logout">🚪</a>
+        <a href="/dashboard">Control📊</a>
+        <a href="/clientes">Clientes👥</a>
+        <a href="/promos">Promos🎁</a>
+        <a href="/pedidos">Pedidos📋</a>
+        <a href="/ventas_ui">💰</a>
+        <a href="/productos/agregar">📦 Agregar Producto</a>
+        <a href="/stock">📦 Stock</a>
+        <a href="/logout">Salir 🚪</a>
     {% else %}
-        <a href="/login">🔑</a>
+        <a href="/login">Logearse🔑</a>
     {% endif %}
 </div>
 
