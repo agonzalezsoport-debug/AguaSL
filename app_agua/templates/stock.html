@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<h2>📦 Stock de Productos</h2>
+
+<table border="1" cellpadding="8">
+    <tr>
+        <th>Código</th>
+        <th>Descripción</th>
+        <th>Precio</th>
+        <th>Stock</th>
+        <th>Guardar</th>
+    </tr>
+
+    {% for p in productos %}
+    <tr>
+        <form method="POST">
+
+            <td>{{ p[1] }}</td>
+
+            <td>
+                <input type="text" name="descripcion" value="{{ p[2] }}">
+            </td>
+
+            <td>
+                <input type="number" step="0.01" name="precio" value="{{ p[3] }}">
+            </td>
+
+            <td>
+                <input type="number" name="stock" value="{{ p[4] }}">
+            </td>
+
+            <td>
+                <input type="hidden" name="id" value="{{ p[0] }}">
+                <button type="submit">💾 Guardar</button>
+            </td>
+
+        </form>
+    </tr>
+    {% endfor %}
+
+</table>
+
+<br>
+
+<a href="/dashboard">⬅ Volver al panel</a>
+
+{% endblock %}
