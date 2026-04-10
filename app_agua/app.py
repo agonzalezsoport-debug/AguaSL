@@ -1,5 +1,5 @@
 from flask import Flask, render_template, request, redirect, session
-import sqlite3
+
 import os
 from datetime import datetime
 import psycopg2
@@ -17,8 +17,16 @@ ESTADOS_VALIDOS = ["pendiente", "enproceso", "entregado", "cancelado"]
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "database.db")
 
+
 def get_db():
-    return sqlite3.connect(DB_PATH)
+    return psycopg2.connect(
+        host="aws-1-us-east-1.pooler.supabase.com",
+        dbname="postgres",
+        user="postgres.dkualpdmiykqhdpfxzxu",
+        password="Administrator21slag",
+        port=6543,
+        sslmode="require"
+    )
 def get_cloud_db():
     return psycopg2.connect(
         host="aws-1-us-east-1.pooler.supabase.com",
@@ -187,10 +195,11 @@ def registro():
         try:
             cur.execute("""
                 INSERT INTO usuarios(nombre, telefono, direccion, password)
-                VALUES (?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s)
             """, (nombre, telefono, direccion, password))
             con.commit()
-        except sqlite3.IntegrityError:
+        except Exception as e:
+            print(e)
             return "❌ Usuario ya existe"
         finally:
             con.close()
@@ -210,7 +219,7 @@ def login_cliente():
         cur = con.cursor()
 
         cur.execute("""
-            SELECT * FROM usuarios WHERE nombre=? AND password=?
+            SELECT * FROM usuarios WHERE nombre=%s AND password=%s
         """, (nombre, password))
 
         user = cur.fetchone()
@@ -275,7 +284,7 @@ def agregar_promo():
 
     cur.execute("""
         INSERT INTO promos(nombre, descripcion, precio, activa)
-        VALUES (?, ?, ?, 1)
+        VALUES (%s, %s, %s, 1)
     """, (nombre, descripcion, precio))
 
     con.commit()
@@ -307,7 +316,7 @@ def agregar_producto():
             # 🔹 SQLITE LOCAL
             cur.execute("""
                 INSERT INTO productos (id, codigo, descripcion, litros, precio, stock, fecha)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
             """, (
                 producto_id,
                 codigo,
@@ -320,7 +329,8 @@ def agregar_producto():
 
             con.commit()
 
-        except sqlite3.IntegrityError:
+        except Exception as e:
+            print(e)
             con.close()
             return "❌ Código ya existe"
 
@@ -357,7 +367,7 @@ def mis_pedidos():
         SELECT p.id, pr.nombre, p.fecha, p.estado
         FROM pedidos p
         JOIN promos pr ON p.promo_id = pr.id
-        WHERE p.cliente_id=?
+        WHERE p.cliente_id=%s
         ORDER BY p.id DESC
     """, (session["cliente_id"],))
 
@@ -380,7 +390,7 @@ def agregar_pedido_cliente():
 
     cur.execute("""
         INSERT INTO pedidos (cliente_id, promo_id, fecha, estado)
-        VALUES (?, ?, ?, 'pendiente')
+        VALUES (%s, %s, %s, 'pendiente')
     """, (session["cliente_id"], promo_id, fecha))
 
     con.commit()
@@ -423,8 +433,8 @@ def cambiar_estado(id, estado):
     cur = con.cursor()
 
     cur.execute("""
-        UPDATE pedidos SET estado=?
-        WHERE id=?
+        UPDATE pedidos SET estado=%s
+        WHERE id=%s
     """, (estado, id))
 
     con.commit()
@@ -457,7 +467,7 @@ def ventas():
         cur.execute("""
             SELECT id, descripcion, litros, precio, stock
             FROM productos
-            WHERE UPPER(codigo)=?
+            WHERE UPPER(codigo)=%s
         """, (codigo,))
 
         prod = cur.fetchone()
@@ -486,7 +496,7 @@ def ventas():
         # 💰 venta
         cur.execute("""
             INSERT INTO ventas (id, fecha, total, descuento, total_final, metodo_pago, cajero)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
         """, (
             venta_id,
             datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -500,7 +510,7 @@ def ventas():
         # 📦 detalle
         cur.execute("""
             INSERT INTO venta_items (id, venta_id, producto_id, cantidad, litros_total, subtotal)
-            VALUES (?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s)
         """, (
             str(datetime.now().timestamp()) + "i",
             venta_id,
@@ -513,8 +523,8 @@ def ventas():
         # 🔥 descontar stock
         cur.execute("""
             UPDATE productos
-            SET stock = stock - ?
-            WHERE id = ?
+            SET stock = stock - %s
+            WHERE id = %s
         """, (cantidad, producto_id))
 
         con.commit()
@@ -555,7 +565,7 @@ def carrito_agregar():
         cur.execute("""
             SELECT id, nombre, descripcion, precio
             FROM promos
-            WHERE id=?
+            WHERE id=%s
         """, (promo_id,))
 
         promo = cur.fetchone()
@@ -581,7 +591,7 @@ def carrito_agregar():
     cur.execute("""
         SELECT id, descripcion, precio, stock
         FROM productos
-        WHERE UPPER(codigo)=?
+        WHERE UPPER(codigo)=%s
     """, (codigo,))
 
     prod = cur.fetchone()
@@ -762,7 +772,7 @@ def carrito_confirmar():
     # ================= VENTA LOCAL =================
     cur.execute("""
         INSERT INTO ventas (id, fecha, total, descuento, total_final, metodo_pago, cajero)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
     """, (
         venta_id,
         fecha,
@@ -780,7 +790,7 @@ def carrito_confirmar():
 
         cur.execute("""
             INSERT INTO venta_items (id, venta_id, producto_id, cantidad, litros_total, subtotal)
-            VALUES (?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s)
         """, (
             item_id,
             venta_id,
@@ -793,8 +803,8 @@ def carrito_confirmar():
         # descontar stock
         cur.execute("""
             UPDATE productos
-            SET stock = stock - ?
-            WHERE id = ?
+            SET stock = stock - %s
+            WHERE id = %s
         """, (item["cantidad"], item["id"]))
 
         # ================= SUPABASE ITEMS =================
@@ -841,8 +851,8 @@ def stock():
 
         cur.execute("""
             UPDATE productos
-            SET descripcion=?, precio=?, stock=?
-            WHERE id=?
+            SET descripcion=%s, precio=%s, stock=%s
+            WHERE id=%s
         """, (descripcion, precio, stock_val, producto_id))
 
         con.commit()
