@@ -1,7 +1,7 @@
 import sqlite3
 import os
 
-# 📌 Ruta absoluta (evita errores de múltiples database.db)
+# 📌 Ruta absoluta (evita múltiples database.db)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "database.db")
 
@@ -18,6 +18,17 @@ CREATE TABLE IF NOT EXISTS clientes (
     nombre TEXT NOT NULL,
     telefono TEXT,
     direccion TEXT
+)
+""")
+
+# ---------------- USUARIOS ----------------
+cur.execute("""
+CREATE TABLE IF NOT EXISTS usuarios (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nombre TEXT UNIQUE NOT NULL,
+    telefono TEXT,
+    direccion TEXT,
+    password TEXT NOT NULL
 )
 """)
 
@@ -45,18 +56,45 @@ CREATE TABLE IF NOT EXISTS pedidos (
 )
 """)
 
-# ---------------- USUARIOS ----------------
+# ---------------- PRODUCTOS ----------------
 cur.execute("""
-CREATE TABLE IF NOT EXISTS usuarios (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    nombre TEXT UNIQUE NOT NULL,
-    telefono TEXT,
-    direccion TEXT,
-    password TEXT NOT NULL
+CREATE TABLE IF NOT EXISTS productos (
+    id TEXT PRIMARY KEY,
+    codigo TEXT UNIQUE,
+    descripcion TEXT,
+    litros INTEGER,
+    precio REAL,
+    stock INTEGER DEFAULT 0,
+    fecha TEXT
 )
 """)
 
-# ---------------- DATOS INICIALES ----------------
+# ---------------- VENTAS ----------------
+cur.execute("""
+CREATE TABLE IF NOT EXISTS ventas (
+    id TEXT PRIMARY KEY,
+    fecha TEXT,
+    total REAL,
+    descuento REAL,
+    total_final REAL,
+    metodo_pago TEXT,
+    cajero TEXT
+)
+""")
+
+# ---------------- VENTA ITEMS ----------------
+cur.execute("""
+CREATE TABLE IF NOT EXISTS venta_items (
+    id TEXT PRIMARY KEY,
+    venta_id TEXT,
+    producto_id TEXT,
+    cantidad INTEGER,
+    litros_total REAL,
+    subtotal REAL
+)
+""")
+
+# ---------------- DATOS INICIALES PROMOS ----------------
 cur.execute("SELECT COUNT(*) FROM promos")
 count = cur.fetchone()[0]
 
