@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2>📊 Dashboard de Reportes</h2>
+
+<!-- ================= KPIs ================= -->
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;">
+
+<div style="background:#eee;padding:10px;border-radius:10px;">
+<h3>💰 Ventas</h3>
+<p>{{ total_ventas }}</p>
+<p>${{ total_dinero }}</p>
+</div>
+
+<div style="background:#dfffe0;padding:10px;border-radius:10px;">
+<h3>📈 Utilidad real</h3>
+<p>${{ utilidad }}</p>
+</div>
+
+<div style="background:#e0f0ff;padding:10px;border-radius:10px;">
+<h3>🧴 Litros vendidos</h3>
+<p>{{ litros_vendidos }}</p>
+</div>
+
+<div style="background:#ffe0e0;padding:10px;border-radius:10px;">
+<h3>📦 Stock total</h3>
+<p>{{ stock_actual }}</p>
+</div>
+
+</div>
+
+<hr>
+
+<!-- ================= MÉTODOS DE PAGO ================= -->
+<h3>💳 Métodos de pago</h3>
+
+<table border="1" cellpadding="8" style="width:100%;">
+<tr>
+<th>Método</th>
+<th>Cantidad</th>
+<th>Total</th>
+</tr>
+
+{% for m in metodos %}
+<tr>
+<td>{{ m[0] }}</td>
+<td>{{ m[1] }}</td>
+<td>${{ m[2] }}</td>
+</tr>
+{% endfor %}
+</table>
+
+<hr>
+
+<!-- ================= VENTAS POR DÍA ================= -->
+<h3>📆 Ventas por día</h3>
+
+<table border="1" cellpadding="8" style="width:100%;">
+<tr>
+<th>Fecha</th>
+<th>Ventas</th>
+<th>Total</th>
+</tr>
+
+{% for v in ventas_dia %}
+<tr>
+<td>{{ v[0] }}</td>
+<td>{{ v[1] }}</td>
+<td>${{ v[2] }}</td>
+</tr>
+{% endfor %}
+</table>
+
+<hr>
+
+<!-- ================= AUDITORÍA STOCK ================= -->
+<h3>📦 Auditoría de stock</h3>
+
+<table border="1" cellpadding="8" style="width:100%;">
+<tr>
+<th>Producto</th>
+<th>Stock actual</th>
+<th>Unidades vendidas</th>
+</tr>
+
+{% for a in auditoria_stock %}
+<tr>
+<td>{{ a[0] }}</td>
+<td>{{ a[1] }}</td>
+<td>{{ a[2] }}</td>
+</tr>
+{% endfor %}
+</table>
+
+{% endblock %}
