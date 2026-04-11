@@ -17,17 +17,7 @@ ESTADOS_VALIDOS = ["pendiente", "enproceso", "entregado", "cancelado"]
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "database.db")
 
-
 def get_db():
-    return psycopg2.connect(
-        host="aws-1-us-east-1.pooler.supabase.com",
-        dbname="postgres",
-        user="postgres.dkualpdmiykqhdpfxzxu",
-        password="Administrator21slag",
-        port=6543,
-        sslmode="require"
-    )
-def get_cloud_db():
     return psycopg2.connect(
         host="aws-1-us-east-1.pooler.supabase.com",
         dbname="postgres",
@@ -198,8 +188,7 @@ def registro():
                 VALUES (%s, %s, %s, %s)
             """, (nombre, telefono, direccion, password))
             con.commit()
-        except Exception as e:
-            print(e)
+        except sqlite3.IntegrityError:
             return "❌ Usuario ya existe"
         finally:
             con.close()
@@ -329,8 +318,7 @@ def agregar_producto():
 
             con.commit()
 
-        except Exception as e:
-            print(e)
+        except sqlite3.IntegrityError:
             con.close()
             return "❌ Código ya existe"
 
@@ -449,8 +437,8 @@ def cambiar_estado(id, estado):
 # ================== VENTAS ==================
 @app.route("/ventas", methods=["GET", "POST"])
 def ventas():
-    if not session.get("admin"):
-        return redirect("/login")
+    if not session.get("admin") and not session.get("cajero_id"):
+        return redirect("/")
 
     con = get_db()
     cur = con.cursor()
@@ -834,6 +822,94 @@ def carrito_confirmar():
     session["carrito"] = []
 
     return redirect("/ventas_ui")
+@app.route("/login_cajero", methods=["GET", "POST"])
+def login_cajero():
+    if request.method == "POST":
+        nombre = request.form.get("nombre")
+        password = request.form.get("password")
+
+        con = get_db()
+        cur = con.cursor()
+
+        cur.execute("""
+            SELECT id, usuario, rol 
+            FROM cajeros 
+            WHERE usuario=%s AND password=%s
+        """, (nombre, password))
+
+        cajero = cur.fetchone()
+        con.close()
+
+        if cajero:
+            session["cajero_id"] = cajero[0]
+            session["nombre_cajero"] = cajero[1]  # ahora es usuario
+            session["rol"] = "cajero"
+
+            return redirect("/dashboard_cajero")
+
+        return "❌ Datos incorrectos"
+
+    return render_template("login_cajero.html")
+@app.route("/crear_cajero", methods=["GET", "POST"])
+@app.route("/crear_cajero", methods=["GET", "POST"])
+def crear_cajero():
+    if not session.get("admin"):
+        return redirect("/login")
+
+    if request.method == "POST":
+        usuario = request.form.get("nombre")  # el input sigue llamándose "nombre"
+        password = request.form.get("password")
+
+        con = get_db()
+        cur = con.cursor()
+
+        cur.execute("""
+            INSERT INTO cajeros (usuario, password, rol)
+            VALUES (%s, %s, 'cajero')
+        """, (usuario, password))
+
+        con.commit()
+        con.close()
+
+        return redirect("/dashboard")
+
+    return render_template("crear_cajero.html")
+@app.route("/cajeros")
+def cajeros():
+    if not session.get("admin"):
+        return redirect("/login")
+
+    con = get_db()
+    cur = con.cursor()
+
+    cur.execute("SELECT id, nombre, rol FROM cajeros")
+    data = cur.fetchall()
+
+    con.close()
+
+    return render_template("cajeros.html", cajeros=data)
+@app.route("/dashboard_cajero")
+def dashboard_cajero():
+    if not session.get("cajero_id"):
+        return redirect("/login_cajero")
+
+    con = get_db()
+    cur = con.cursor()
+
+    cur.execute("SELECT COUNT(*) FROM productos")
+    productos = cur.fetchone()[0]
+
+    cur.execute("SELECT COUNT(*) FROM pedidos")
+    pedidos = cur.fetchone()[0]
+
+    con.close()
+
+    return render_template(
+        "dashboard_cajero.html",
+        productos=productos,
+        pedidos=pedidos,
+        nombre=session.get("nombre_cajero")
+    )
 @app.route("/stock", methods=["GET", "POST"])
 def stock():
     if not session.get("admin"):
