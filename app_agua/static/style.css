@@ -1,22 +1,17 @@
 :root {
-    --primary: #1d4ed8;
-    --primary-light: #3b82f6;
-    --bg: #eff6ff;
+    --primary: #2563eb;
+    --primary-dark: #1d4ed8;
+    --bg: #f1f5f9;
     --card: #ffffff;
     --text: #0f172a;
     --muted: #64748b;
+    --radius: 16px;
 }
 
-/* RESET */
-* {
-    box-sizing: border-box;
-    font-family: 'Segoe UI', sans-serif;
-}
-
-/* BODY */
 body {
     margin: 0;
-    background: linear-gradient(180deg, #e0f2fe 0%, #f1f5f9 50%, #ffffff 100%);
+    font-family: 'Segoe UI', sans-serif;
+    background: var(--bg);
     color: var(--text);
 }
 
@@ -163,23 +158,66 @@ h2 {
 /* ================= GRID ================= */
 .grid {
     display: grid;
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
     gap: 15px;
 }
 
 /* ================= CARDS ================= */
 .card {
+    position: relative;
+    border-radius: var(--radius);
     background: var(--card);
-    padding: 18px;
-    border-radius: 18px;
-    box-shadow: 0 8px 25px rgba(0,0,0,0.06);
-    transition: 0.3s;
+    padding: 20px;
     border: 1px solid #e2e8f0;
+    transition: 0.3s ease;
+
+    /* 🔥 GLOW REAL VISIBLE SIEMPRE */
+    box-shadow:
+        0 10px 30px rgba(0,0,0,0.06),
+        0 0 0 rgba(37,99,235,0);
 }
 
+/* 🌟 GLOW REAL ALREDEDOR */
+.card::before {
+    content: "";
+    position: absolute;
+    inset: -10px;
+    border-radius: inherit;
+
+    background: linear-gradient(135deg, #2563eb, #22c55e, #f59e0b, #2563eb);
+    background-size: 300% 300%;
+
+    filter: blur(28px);
+    opacity: 0;
+
+    z-index: -1;
+
+    transition: opacity 0.4s ease, transform 0.4s ease;
+
+    animation: glowMove 6s linear infinite;
+}
+
+/* 💡 aparece el brillo al hover */
+.card:hover::before {
+    opacity: 0.9;
+    transform: scale(1.05);
+}
+
+/* ✨ hover card */
 .card:hover {
-    transform: translateY(-5px) scale(1.01);
-    box-shadow: 0 12px 30px rgba(0,0,0,0.1);
+    transform: translateY(-6px) scale(1.02);
+
+    box-shadow:
+        0 20px 50px rgba(0,0,0,0.18),
+        0 0 25px rgba(37,99,235,0.6),
+        0 0 60px rgba(34,197,94,0.3);
+}
+
+/* 🌈 ANIMACIÓN GLOW */
+@keyframes glowMove {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
 }
 
 /* ================= STATS ================= */
@@ -211,12 +249,22 @@ label {
 
 input, select {
     width: 100%;
-    padding: 12px;
-    margin-top: 6px;
-    margin-bottom: 14px;
-    border-radius: 10px;
+    padding: 14px;
+    border-radius: 12px;
     border: 1px solid #e2e8f0;
+    background: #f8fafc;
+    outline: none;
+    transition: 0.2s;
+    font-size: 14px;
 }
+
+input:focus, select:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(37,99,235,0.15);
+    background: white;
+}
+
+/* BOTONES */
 .btn {
     display: inline-block;
     padding: 10px 14px;
@@ -228,33 +276,32 @@ input, select {
     transition: 0.3s;
 }
 
-/* COLORES */
-.btn:nth-child(1) { background: #f59e0b; } /* Pendiente */
-.btn:nth-child(2) { background: #2563eb; } /* En proceso */
-.btn:nth-child(3) { background: #16a34a; } /* Entregado */
-.btn:nth-child(4) { background: #dc2626; } /* Cancelar */
+/* COLORES BOTONES */
+.btn:nth-child(1) { background: #f59e0b; }
+.btn:nth-child(2) { background: #2563eb; }
+.btn:nth-child(3) { background: #16a34a; }
+.btn:nth-child(4) { background: #dc2626; }
 
 .btn:hover {
     transform: scale(1.05);
-    opacity: 0.9;
+    opacity: 1;
 }
 
 /* ================= BOTONES ================= */
-button {
-    width: 100%;
-    padding: 14px;
+button, .btn {
+    background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+    color: white;
+    padding: 12px 16px;
     border-radius: 12px;
     border: none;
-    background: linear-gradient(135deg, #2563eb, #3b82f6);
-    color: white;
     font-weight: bold;
     cursor: pointer;
-    transition: 0.3s;
+    transition: 0.2s;
 }
 
-button:hover {
-    transform: scale(1.03);
-    box-shadow: 0 8px 20px rgba(37,99,235,0.3);
+button:hover, .btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 20px rgba(37,99,235,0.25);
 }
 
 /* ================= NAVBAR ================= */
@@ -311,6 +358,8 @@ button:hover {
         font-size: 24px;
     }
 }
+
+/* WAVES */
 .waves {
     position: absolute;
     bottom: 0;
@@ -337,6 +386,13 @@ button:hover {
     animation: waveMove 12s linear infinite reverse;
     opacity: 0.4;
 }
+
+@keyframes waveMove {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(-50%); }
+}
+
+/* FOOTER */
 .footer-contacto {
     display: flex;
     justify-content: space-around;
@@ -345,7 +401,7 @@ button:hover {
     color: white;
     padding: 30px 20px;
     margin-top: 40px;
-    backdrop-filter: blur(10px);
+    backdrop-filter: blur(35px);
 }
 
 .footer-box {
@@ -367,10 +423,7 @@ button:hover {
     text-decoration: underline;
 }
 
-@keyframes waveMove {
-    0% { transform: translateX(0); }
-    100% { transform: translateX(-50%); }
-}
+/* WHATSAPP FLOAT */
 .whatsapp-float {
     position: fixed;
     bottom: 20px;
@@ -384,7 +437,6 @@ button:hover {
     justify-content: center;
     box-shadow: 0 8px 20px rgba(0,0,0,0.25);
     z-index: 9999;
-
     animation: float 2.5s ease-in-out infinite;
 }
 
@@ -393,7 +445,6 @@ button:hover {
     height: 28px;
 }
 
-/* 💚 efecto latido */
 .whatsapp-float::after {
     content: "";
     position: absolute;
@@ -405,14 +456,12 @@ button:hover {
     animation: pulse 1.8s infinite;
 }
 
-/* 🌊 flotación suave */
 @keyframes float {
     0% { transform: translateY(0px); }
     50% { transform: translateY(-6px); }
     100% { transform: translateY(0px); }
 }
 
-/* 💓 pulso */
 @keyframes pulse {
     0% {
         transform: scale(1);
@@ -428,8 +477,25 @@ button:hover {
     }
 }
 
-/* 🖱️ hover más pro */
 .whatsapp-float:hover {
     transform: scale(1.1);
     animation: none;
+}
+
+/* INPUT CODIGO */
+#codigo {
+    width: 1800px !important;
+    max-width: 100%;
+    padding: 10px;
+    font-size: 14px;
+    border-radius: 10px;
+}
+
+/* GLOBAL FIX */
+html, body {
+    width: 100%;
+    overflow-x: hidden;
+}
+.card:hover::before {
+    opacity: 1 !important;
 }
