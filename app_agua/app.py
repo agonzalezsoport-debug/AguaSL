@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, session
+from flask import Flask, render_template, request, redirect, session, flash
 import os
 from datetime import datetime
 import psycopg2
@@ -8,6 +8,7 @@ import time
 import json
 import sqlite3
 import uuid
+print("🔥🔥🔥 ESTE ES EL ARCHIVO CORRECTO 🔥🔥🔥")
 
 app = Flask(__name__)
 app.secret_key = "clave_secreta"
@@ -67,8 +68,10 @@ def sync_worker():
                     # ================= PRODUCTOS =================
                     if tabla == "productos":
                         cur_cloud.execute("""
-                            INSERT INTO productos(id, codigo, descripcion, litros, precio, stock, fecha)
-                            VALUES (%s,%s,%s,%s,%s,%s,%s)
+                            INSERT INTO productos(
+                                id, codigo, descripcion, litros, precio, stock, fecha, departamento
+                            )
+                            VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
                             ON CONFLICT (id) DO NOTHING
                         """, (
                             data["id"],
@@ -77,7 +80,8 @@ def sync_worker():
                             data["litros"],
                             data["precio"],
                             data["stock"],
-                            data["fecha"]
+                            data["fecha"],
+                            data.get("departamento")  # 🔥 IMPORTANTE
                         ))
 
                     # ================= PROMOS =================
@@ -109,13 +113,14 @@ def sync_worker():
                     # ================= VENTAS =================
                     elif tabla == "ventas":
                         cur_cloud.execute("""
-                            INSERT INTO ventas(id, fecha, total, descuento, total_final, metodo_pago, cajero)
-                            VALUES (%s,%s,%s,%s,%s,%s,%s)
+                            INSERT INTO ventas(id, fecha, total,recargo, descuento, total_final, metodo_pago, cajero)
+                            VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
                             ON CONFLICT (id) DO NOTHING
                         """, (
                             data["id"],
                             data["fecha"],
                             data["total"],
+                            data.get("recargo", 0),
                             data["descuento"],
                             data["total_final"],
                             data["metodo_pago"],
@@ -152,7 +157,14 @@ def sync_worker():
                             data["subtotal"]
                         ))
 
-                        
+                        cur_cloud.execute("""
+                            UPDATE productos
+                            SET stock = stock - %s
+                            WHERE id = %s
+                        """, (
+                            data["cantidad"],
+                            data["producto_id"]
+                        ))
 
                         
 
@@ -203,11 +215,14 @@ def get_db():
 
     # 🔴 OFFLINE fallback
     return sqlite3.connect(DB_PATH)
-def ejecutar(cur, conn, query, params=()):
+def ejecutar(cur, conn, query, params=None):
     if isinstance(conn, sqlite3.Connection):
         query = query.replace("%s", "?")
 
-    cur.execute(query, params)
+    if params is None:
+        cur.execute(query)
+    else:
+        cur.execute(query, params)
 def save_offline(tabla, accion, data):
     con = get_db_local()
     cur = con.cursor()
@@ -219,22 +234,38 @@ def save_offline(tabla, accion, data):
 
     con.commit()
     con.close()
+import requests
+
 def internet_ok():
     try:
-        socket.create_connection(("8.8.8.8", 53), timeout=2)
+        import urllib.request
+        urllib.request.urlopen("https://www.google.com", timeout=3)
+        print("🌐 INTERNET OK")
         return True
-    except:
+    except Exception as e:
+        print("❌ SIN INTERNET:", e)
         return False
-def sync_producto_to_cloud(id, codigo, descripcion, litros, precio, stock, fecha):
+def sync_producto_to_cloud(id, codigo, descripcion, litros, precio, stock, fecha, departamento):
     try:
         con = get_db_cloud()
         cur = con.cursor()
 
         ejecutar(cur, con, """
-            INSERT INTO productos(id, codigo, descripcion, litros, precio, stock, fecha)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO productos(
+                id, codigo, descripcion, litros, precio, stock, fecha, departamento
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (id) DO NOTHING
-        """, (id, codigo, descripcion, litros, precio, stock, fecha))
+        """, (
+            id,
+            codigo,
+            descripcion,
+            litros,
+            precio,
+            stock,
+            fecha,
+            departamento
+        ))
 
         con.commit()
         con.close()
@@ -252,7 +283,8 @@ def sync_producto_to_cloud(id, codigo, descripcion, litros, precio, stock, fecha
             "litros": litros,
             "precio": precio,
             "stock": stock,
-            "fecha": fecha
+            "fecha": fecha,
+            "departamento": departamento   # 🔥 IMPORTANTE
         })
 def sync_promo_to_cloud(nombre, descripcion, precio):
     try:
@@ -279,20 +311,22 @@ def sync_promo_to_cloud(nombre, descripcion, precio):
             "activa": 1
         })
 
-def sync_venta_to_cloud(venta_id, fecha, total, descuento, total_final, metodo_pago, cajero, items):
+def sync_venta_to_cloud(venta_id, fecha, total, recargo, descuento, total_final, metodo_pago, cajero, items):
     try:
         con = get_db_cloud()
         cur = con.cursor()
 
-        # ================= VENTA =================
         cur.execute("""
-            INSERT INTO ventas(id, fecha, total, descuento, total_final, metodo_pago, cajero)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO ventas(
+                id, fecha, total, recargo, descuento, total_final, metodo_pago, cajero
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (id) DO NOTHING
         """, (
             venta_id,
             fecha,
             total,
+            recargo,      # ✔ ahora coincide
             descuento,
             total_final,
             metodo_pago,
@@ -329,7 +363,7 @@ def sync_venta_to_cloud(venta_id, fecha, total, descuento, total_final, metodo_p
                 subtotal
             ))
 
-           
+            
 
         con.commit()
         con.close()
@@ -392,8 +426,8 @@ def logout():
 # ================== DASHBOARD ==================
 @app.route("/dashboard")
 def dashboard():
-    if not session.get("admin"):
-        return redirect("/login")
+    if not session.get("admin") and not session.get("puede_agregar_productos"):
+        return "❌ No tenés permiso para agregar productos"
 
     con = get_db()
     cur = con.cursor()
@@ -507,8 +541,8 @@ def clientes():
 # ================== PROMOS ==================
 @app.route("/promos")
 def promos():
-    if not session.get("admin"):
-        return redirect("/login")
+    if not session.get("admin") and not session.get("puede_agregar_productos"):
+        return "❌ No tenés permiso para agregar productos"
 
     con = get_db()
     cur = con.cursor()
@@ -522,8 +556,8 @@ def promos():
 
 @app.route("/promos/agregar", methods=["POST"])
 def agregar_promo():
-    if not session.get("admin"):
-        return redirect("/login")
+    if not session.get("admin") and not session.get("puede_agregar_productos"):
+        return "❌ No tenés permiso para agregar productos"
 
     nombre = request.form.get("nombre")
     descripcion = request.form.get("descripcion")
@@ -552,8 +586,8 @@ def agregar_promo():
     return redirect("/promos")
 @app.route("/productos/agregar", methods=["GET", "POST"])
 def agregar_producto():
-    if not session.get("admin"):
-        return redirect("/login")
+    if not session.get("admin") and not session.get("puede_agregar_productos"):
+        return "❌ No tenés permiso para agregar productos"
 
     if request.method == "POST":
         try:
@@ -562,6 +596,9 @@ def agregar_producto():
             litros = int(request.form.get("litros") or 0)
             precio = float(request.form.get("precio") or 0)
             stock = int(request.form.get("stock") or 0)
+
+            # 🔥 NUEVO CAMPO
+            departamento = request.form.get("departamento")
 
             if not codigo:
                 return "❌ Código vacío"
@@ -574,8 +611,10 @@ def agregar_producto():
 
             # ================= LOCAL =================
             ejecutar(cur, con, """
-                INSERT INTO productos (id, codigo, descripcion, litros, precio, stock, fecha)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO productos (
+                    id, codigo, descripcion, litros, precio, stock, fecha, departamento
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             """, (
                 producto_id,
                 codigo,
@@ -583,7 +622,8 @@ def agregar_producto():
                 litros,
                 precio,
                 stock,
-                fecha
+                fecha,
+                departamento
             ))
 
             con.commit()
@@ -598,7 +638,8 @@ def agregar_producto():
                     litros,
                     precio,
                     stock,
-                    fecha
+                    fecha,
+                    departamento
                 )
             except Exception as e:
                 print("⚠️ Error sync producto:", e)
@@ -612,7 +653,6 @@ def agregar_producto():
             return f"❌ Error: {e}"
 
     return render_template("agregar_producto.html")
-
 # ================== MIS PEDIDOS CLIENTE ==================
 @app.route("/mis_pedidos")
 def mis_pedidos():
@@ -683,8 +723,8 @@ def agregar_pedido_cliente():
 # ================== PEDIDOS ADMIN ==================
 @app.route("/pedidos")
 def pedidos():
-    if not session.get("admin"):
-        return redirect("/login")
+    if not session.get("admin") and not session.get("puede_agregar_productos"):
+        return "❌ No tenés permiso para agregar productos"
 
     con = get_db()
     cur = con.cursor()
@@ -707,12 +747,61 @@ def pedidos():
     con.close()
 
     return render_template("pedidos.html", pedidos=pedidos)
+@app.route("/permisos_cajero/<int:id>", methods=["GET", "POST"])
+def permisos_cajero(id):
+    if not session.get("admin"):
+        return redirect("/login")
+
+    con = get_db()
+    cur = con.cursor()
+
+    # =========================
+    # GUARDAR PERMISOS (POST)
+    # =========================
+    if request.method == "POST":
+        vender = 1 if "vender" in request.form else 0
+        pedidos = 1 if "pedidos" in request.form else 0
+        reportes = 1 if "reportes" in request.form else 0
+        stock = 1 if "stock" in request.form else 0
+        agregar = 1 if "agregar_productos" in request.form else 0
+
+        ejecutar(cur, con, """
+            UPDATE cajeros
+            SET puede_vender=%s,
+                puede_ver_pedidos=%s,
+                puede_ver_reportes=%s,
+                puede_ver_stock=%s,
+                puede_agregar_productos=%s
+            WHERE id=%s
+        """, (vender, pedidos, reportes, stock, agregar, id))
+
+        con.commit()
+
+    # =========================
+    # CARGAR DATOS CAJERO
+    # =========================
+    ejecutar(cur, con, """
+        SELECT id, usuario, rol,
+               puede_vender,
+               puede_ver_pedidos,
+               puede_ver_reportes,
+               puede_ver_stock,
+               puede_agregar_productos
+        FROM cajeros
+        WHERE id=%s
+    """, (id,))
+
+    cajero = cur.fetchone()
+
+    con.close()
+
+    return render_template("permisos_cajero.html", cajero=cajero)
 
 # ================== CAMBIAR ESTADO ==================
 @app.route("/pedido/estado/<int:id>/<estado>")
 def cambiar_estado(id, estado):
-    if not session.get("admin"):
-        return redirect("/login")
+    if not session.get("admin") and not session.get("puede_agregar_productos"):
+        return "❌ No tenés permiso para agregar productos"
 
     if estado not in ESTADOS_VALIDOS:
         return "❌ Estado inválido"
@@ -741,7 +830,7 @@ def cambiar_estado(id, estado):
 # ================== VENTAS ==================
 @app.route("/ventas", methods=["GET", "POST"])
 def ventas():
-    if not session.get("admin") and not session.get("cajero_id"):
+    if not (session.get("admin") or session.get("cajero_id")):
         return redirect("/")
 
     con = get_db()
@@ -752,8 +841,11 @@ def ventas():
             codigo = (request.form.get("codigo") or "").strip().upper()
             cantidad = int(request.form.get("cantidad") or 0)
 
+            recargo = float(request.form.get("recargo") or 0)
+            descuento = float(request.form.get("descuento") or 0)
+            metodo_pago = request.form.get("metodo_pago")
+
             if cantidad <= 0:
-                con.close()
                 return "❌ Cantidad inválida"
 
             ejecutar(cur, con, """
@@ -763,10 +855,10 @@ def ventas():
             """, (codigo,))
 
             prod = cur.fetchone()
-
             if not prod:
                 return "❌ Producto no existe"
 
+            # compatibilidad sqlite / postgres
             if isinstance(prod, sqlite3.Row):
                 producto_id = prod["id"]
                 desc = prod["descripcion"]
@@ -776,44 +868,53 @@ def ventas():
             else:
                 producto_id, desc, litros, precio, stock = prod
 
-            # 🔥 VALIDAR STOCK
             if stock < cantidad:
                 return f"❌ Stock insuficiente (Disponible: {stock})"
 
-            metodo_pago = request.form.get("metodo_pago")
             if not metodo_pago:
                 return "❌ Debes seleccionar método de pago"
 
+            # ================= CÁLCULOS =================
             subtotal = precio * cantidad
+            total_final = subtotal + recargo - descuento
             litros_total = litros * cantidad
 
             venta_id = str(uuid.uuid4())
             item_id = venta_id + "_i"
-
             fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-            # 👤 detectar quién vende
-            cajero_nombre = "admin"
-            if session.get("cajero_id"):
+            # ================= CAJERO =================
+            if session.get("admin"):
+                cajero_id = None
+                cajero_nombre = "admin"
+            else:
+                cajero_id = session.get("cajero_id")
                 cajero_nombre = session.get("nombre_cajero")
 
             # ================= VENTA =================
             ejecutar(cur, con, """
-                INSERT INTO ventas (id, fecha, total, descuento, total_final, metodo_pago, cajero)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO ventas (
+                    id, fecha, total, recargo, descuento,
+                    total_final, metodo_pago, cajero_id, cajero
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (
                 venta_id,
                 fecha,
                 subtotal,
-                0,
-                subtotal,
+                recargo,
+                descuento,
+                total_final,
                 metodo_pago,
+                cajero_id,
                 cajero_nombre
             ))
 
             # ================= ITEM =================
             ejecutar(cur, con, """
-                INSERT INTO venta_items (id, venta_id, producto_id, cantidad, litros_total, subtotal)
+                INSERT INTO venta_items (
+                    id, venta_id, producto_id, cantidad, litros_total, subtotal
+                )
                 VALUES (%s, %s, %s, %s, %s, %s)
             """, (
                 item_id,
@@ -825,17 +926,22 @@ def ventas():
             ))
 
             # ================= STOCK =================
-           
+            ejecutar(cur, con, """
+                UPDATE productos
+                SET stock = stock - %s
+                WHERE id = %s
+            """, (cantidad, producto_id))
 
             con.commit()
 
-            # ☁️ SYNC
+            # ================= SYNC CLOUD =================
             sync_venta_to_cloud(
                 venta_id,
                 fecha,
                 subtotal,
-                0,
-                subtotal,
+                recargo,
+                descuento,
+                total_final,
                 metodo_pago,
                 cajero_nombre,
                 [{
@@ -847,7 +953,7 @@ def ventas():
                 }]
             )
 
-            return f"✅ Venta realizada: ${subtotal}"
+            return f"✅ Venta realizada. Total: ${total_final}"
 
         except Exception as e:
             con.rollback()
@@ -862,6 +968,8 @@ def ventas():
     con.close()
 
     return render_template("ventas.html", productos=productos)
+
+
 @app.route("/carrito/agregar", methods=["POST"])
 def carrito_agregar():
     if "carrito" not in session:
@@ -939,25 +1047,11 @@ def carrito_agregar():
 
 @app.route("/reporte_ventas")
 def reporte_ventas():
-    if not session.get("admin"):
-        return redirect("/login")
+    if not session.get("admin") and not session.get("puede_agregar_productos"):
+        return "❌ No tenés permiso para ver reportes"
 
     con = get_db()
     cur = con.cursor()
-    # ================= PRODUCTOS MÁS VENDIDOS =================
-    ejecutar(cur, con, """
-        SELECT 
-            p.id,
-            p.descripcion,
-            SUM(v.cantidad) AS unidades_vendidas,
-            SUM(v.cantidad * p.precio) AS total_vendido
-        FROM venta_items v
-        JOIN productos p ON p.id = v.producto_id
-        GROUP BY p.id, p.descripcion
-        ORDER BY unidades_vendidas DESC
-    """)
-
-    productos_vendidos = cur.fetchall()
 
     # ================= VENTAS GENERALES =================
     ejecutar(cur, con, """
@@ -987,20 +1081,23 @@ def reporte_ventas():
 
     # ================= MÉTODOS DE PAGO =================
     ejecutar(cur, con, """
-        SELECT metodo_pago,
-               COUNT(*),
-               COALESCE(SUM(total_final),0)
+        SELECT 
+            metodo_pago,
+            COUNT(*) as cantidad,
+            COALESCE(SUM(total),0) as subtotal,
+            COALESCE(SUM(recargo),0) as recargo_total,
+            COALESCE(SUM(descuento),0) as descuento_total,
+            COALESCE(SUM(total_final),0) as total_final
         FROM ventas
         GROUP BY metodo_pago
-        ORDER BY COUNT(*) DESC
+        ORDER BY cantidad DESC
     """)
     metodos = cur.fetchall()
 
     # ================= LITROS VENDIDOS =================
     ejecutar(cur, con, """
-        SELECT COALESCE(SUM(v.cantidad * p.litros),0)
-        FROM venta_items v
-        JOIN productos p ON v.producto_id = p.id
+        SELECT COALESCE(SUM(vi.litros_total),0)
+        FROM venta_items vi
     """)
     litros_vendidos = cur.fetchone()[0]
 
@@ -1008,7 +1105,7 @@ def reporte_ventas():
     ejecutar(cur, con, "SELECT COALESCE(SUM(stock),0) FROM productos")
     stock_actual = cur.fetchone()[0]
 
-    # ================= AUDITORÍA DE STOCK =================
+    # ================= AUDITORÍA STOCK =================
     ejecutar(cur, con, """
         SELECT p.descripcion,
                p.stock,
@@ -1019,6 +1116,69 @@ def reporte_ventas():
         ORDER BY vendidos DESC
     """)
     auditoria_stock = cur.fetchall()
+
+    # ================= PRODUCTOS MÁS VENDIDOS =================
+    ejecutar(cur, con, """
+        SELECT 
+            p.descripcion,
+            COALESCE(SUM(v.cantidad),0) as total_unidades,
+            COALESCE(SUM(v.subtotal),0) as total_vendido
+        FROM venta_items v
+        JOIN productos p ON v.producto_id = p.id
+        GROUP BY p.descripcion
+        ORDER BY total_unidades DESC
+        LIMIT 10
+    """)
+    productos_vendidos = cur.fetchall()
+
+    # ================= VENTAS POR DEPARTAMENTO =================
+    ejecutar(cur, con, """
+        SELECT 
+            COALESCE(p.departamento, 'Sin asignar') AS departamento,
+            COUNT(DISTINCT v.id) AS ventas,
+            COALESCE(SUM(v.total_final), 0) AS total_vendido
+        FROM ventas v
+        JOIN venta_items vi ON v.id = vi.venta_id
+        JOIN productos p ON vi.producto_id = p.id
+        GROUP BY p.departamento
+        ORDER BY total_vendido DESC
+    """)
+
+    ventas_departamento = cur.fetchall()  # ✅ CORRECTO
+
+    # ================= HISTORIAL POR ITEMS =================
+    ejecutar(cur, con, """
+        SELECT 
+            v.fecha,
+
+            CASE 
+                WHEN vi.producto_id LIKE 'promo_%' 
+                    THEN pr.nombre
+                ELSE 
+                    p.descripcion
+            END AS producto,
+
+            vi.cantidad,
+            vi.subtotal,
+            v.metodo_pago,
+            v.cajero
+
+        FROM ventas v
+        JOIN venta_items vi ON v.id = vi.venta_id
+
+        LEFT JOIN productos p 
+            ON vi.producto_id = p.id
+
+        LEFT JOIN promos pr 
+            ON vi.producto_id = 'promo_' || pr.id
+
+        ORDER BY v.fecha DESC
+    """)
+
+    historial_items = cur.fetchall()  # ✅ CORRECTO
+
+   
+   
 
     con.close()
 
@@ -1032,8 +1192,52 @@ def reporte_ventas():
         litros_vendidos=litros_vendidos,
         stock_actual=stock_actual,
         auditoria_stock=auditoria_stock,
-        productos_vendidos=productos_vendidos
+        productos_vendidos=productos_vendidos,
+        ventas_departamento=ventas_departamento,
+        historial_items=historial_items
     )
+@app.route("/promo/agregar_producto", methods=["POST"])
+def agregar_producto_a_promo():
+    if not session.get("admin"):
+        return "❌ Sin permiso"
+
+    promo_id = request.form.get("promo_id")
+    codigo = (request.form.get("codigo") or "").strip().upper()
+    cantidad = int(request.form.get("cantidad") or 0)
+
+    if cantidad <= 0:
+        return "❌ Cantidad inválida"
+
+    con = get_db()
+    cur = con.cursor()
+
+    # Buscar producto
+    ejecutar(cur, con, """
+        SELECT id, stock FROM productos WHERE UPPER(codigo)=%s
+    """, (codigo,))
+
+    prod = cur.fetchone()
+
+    if not prod:
+        con.close()
+        return "❌ Producto no existe"
+
+    producto_id, stock = prod
+
+    if stock < cantidad:
+        con.close()
+        return f"❌ Stock insuficiente ({stock})"
+
+    # Guardar relación
+    ejecutar(cur, con, """
+        INSERT INTO promo_items (promo_id, producto_id, cantidad)
+        VALUES (%s, %s, %s)
+    """, (promo_id, producto_id, cantidad))
+
+    con.commit()
+    con.close()
+
+    return redirect("/promos")
 @app.route("/debug_promos")
 def debug_promos():
     con = get_db()
@@ -1046,8 +1250,9 @@ def debug_promos():
     return str(data)
 @app.route("/ventas_ui")
 def ventas_ui():
-    if not session.get("admin") and not session.get("cajero_id"):
-        return redirect("/login")
+    cajero_nombre = session.get("nombre_cajero", "admin")
+    print("DEBUG CAJERO_ID:", session.get("cajero_id"))
+    print("DEBUG CAJERO_NOMBRE:", session.get("nombre_cajero"))
 
     con = get_db()
     cur = con.cursor()
@@ -1101,45 +1306,113 @@ def carrito_confirmar():
 
     metodo_pago = request.form.get("metodo_pago")
     recargo = float(request.form.get("recargo") or 0)
+    descuento = float(request.form.get("descuento") or 0)
 
     if not metodo_pago:
         return "❌ Selecciona método de pago"
 
+    
+   # ================= CAJERO =================
+    if session.get("admin"):
+        cajero_id = None
+        cajero_nombre = "admin"
+    else:
+        cajero_id = session.get("cajero_id")
+        cajero_nombre = session.get("nombre_cajero")
+
+    # 🔥 validación solo para cajeros
+    if not session.get("admin") and not cajero_nombre:
+        return "❌ Error: sesión de cajero perdida"
+
     con = get_db()
     cur = con.cursor()
 
-    venta_id = str(uuid.uuid4())
+    venta_id = str(datetime.now().timestamp())
     fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    # 🔒 asegurar tipos correctos
+    # ================= CALCULOS =================
     subtotal = sum(float(i["precio"]) * int(i["cantidad"]) for i in carrito)
+
     recargo_valor = subtotal * recargo / 100
-    total_final = subtotal + recargo_valor
+    total_con_recargo = subtotal + recargo_valor
+
+    descuento_valor = total_con_recargo * descuento / 100
+    total_final = total_con_recargo - descuento_valor
 
     # ================= VENTA =================
     ejecutar(cur, con, """
-        INSERT INTO ventas (id, fecha, total, descuento, total_final, metodo_pago, cajero)
-        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        INSERT INTO ventas (
+            id, fecha, total,
+            recargo,
+            descuento,
+            total_final, metodo_pago, cajero_id, cajero
+        )
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
     """, (
         venta_id,
         fecha,
         subtotal,
         recargo_valor,
+        descuento_valor,
         total_final,
         metodo_pago,
-        "admin"
+        cajero_id,
+        cajero_nombre
     ))
 
     items_cloud = []
 
+    # ================= ITEMS =================
     for item in carrito:
+
+        cantidad_carrito = int(item["cantidad"])
+
+        # ================= PROMOS =================
+        if str(item["id"]).startswith("promo_"):
+
+            promo_id = item["id"].replace("promo_", "")
+
+            ejecutar(cur, con, """
+                SELECT producto_id, cantidad
+                FROM promo_items
+                WHERE promo_id=%s
+            """, (promo_id,))
+
+            productos_promo = cur.fetchall()
+
+            for prod in productos_promo:
+                producto_id = prod[0]
+                cantidad_real = prod[1] * cantidad_carrito
+
+                ejecutar(cur, con, """
+                    UPDATE productos
+                    SET stock = stock - %s
+                    WHERE id = %s
+                """, (cantidad_real, producto_id))
+
+                ejecutar(cur, con, """
+                    INSERT INTO venta_items (
+                        id, venta_id, producto_id, cantidad, litros_total, subtotal
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                """, (
+                    str(uuid.uuid4()),
+                    venta_id,
+                    producto_id,
+                    cantidad_real,
+                    0,
+                    0
+                ))
+
+            continue
+
+        # ================= PRODUCTOS NORMALES =================
         item_id = str(uuid.uuid4())
 
         cantidad = int(item["cantidad"])
         precio = float(item["precio"])
         subtotal_item = precio * cantidad
 
-        # ================= INSERT ITEM =================
         ejecutar(cur, con, """
             INSERT INTO venta_items (id, venta_id, producto_id, cantidad, litros_total, subtotal)
             VALUES (%s, %s, %s, %s, %s, %s)
@@ -1152,14 +1425,12 @@ def carrito_confirmar():
             subtotal_item
         ))
 
-        # ================= STOCK =================
         ejecutar(cur, con, """
             UPDATE productos
             SET stock = stock - %s
             WHERE id = %s
         """, (cantidad, item["id"]))
 
-        # ================= CLOUD =================
         items_cloud.append({
             "id": item_id,
             "producto_id": item["id"],
@@ -1177,9 +1448,10 @@ def carrito_confirmar():
         fecha,
         subtotal,
         recargo_valor,
+        descuento_valor,
         total_final,
         metodo_pago,
-        "admin",
+        cajero_nombre,
         items_cloud
     )
 
@@ -1196,9 +1468,13 @@ def login_cajero():
         con = get_db()
         cur = con.cursor()
 
-        # ✅ USAR ejecutar (CLAVE)
         ejecutar(cur, con, """
-            SELECT id, usuario, rol 
+            SELECT id, usuario, rol,
+                   puede_vender,
+                   puede_ver_pedidos,
+                   puede_ver_reportes,
+                   puede_ver_stock,
+                   puede_agregar_productos
             FROM cajeros 
             WHERE usuario=%s AND password=%s
         """, (nombre, password))
@@ -1210,6 +1486,20 @@ def login_cajero():
             session["cajero_id"] = cajero[0]
             session["nombre_cajero"] = cajero[1]
             session["rol"] = "cajero"
+
+            # 🔥 GUARDAR PERMISOS
+            session["puede_vender"] = bool(cajero[3] or 0)
+            session["puede_ver_pedidos"] = bool(cajero[4] or 0)
+            session["puede_ver_reportes"] = bool(cajero[5] or 0)
+            session["puede_ver_stock"] = bool(cajero[6] or 0)
+            session["puede_agregar_productos"] = bool(cajero[7] or 0)
+
+            print("PERMISOS:",
+                  session["puede_vender"],
+                  session["puede_ver_pedidos"],
+                  session["puede_ver_reportes"],
+                  session["puede_ver_stock"],
+                  session["puede_agregar_productos"])
 
             return redirect("/dashboard_cajero")
 
@@ -1240,10 +1530,11 @@ def crear_cajero():
             """, (usuario, password))
 
             con.commit()
+            flash("✅ Cajero creado con éxito")
 
         except Exception as e:
             con.close()
-            return f"❌ Error al crear cajero: {e}"
+            return f"❌ Error al crear cajero ya existe: {e}"
 
         con.close()
         return redirect("/dashboard")
@@ -1289,8 +1580,8 @@ def dashboard_cajero():
     )
 @app.route("/stock", methods=["GET", "POST"])
 def stock():
-    if not session.get("admin"):
-        return redirect("/login")
+    if not session.get("admin") and not session.get("puede_agregar_productos"):
+        return "❌ No tenés permiso"
 
     con = get_db()
     cur = con.cursor()
@@ -1306,17 +1597,47 @@ def stock():
             con.close()
             return "❌ ID inválido"
 
-        # ✅ USAR ejecutar (CLAVE)
-        ejecutar(cur, con, """
-            UPDATE productos
-            SET descripcion=%s, precio=%s, stock=%s
-            WHERE id=%s
-        """, (descripcion, precio, stock_val, producto_id))
+        try:
+            ejecutar(cur, con, """
+                UPDATE productos
+                SET descripcion=%s,
+                    precio=%s,
+                    stock=%s
+                WHERE id=%s
+            """, (descripcion, precio, stock_val, producto_id))
 
-        con.commit()
+            con.commit()
+
+            # 🔥 OPCIONAL: sincronizar cambio a la nube
+            if internet_ok():
+                try:
+                    con_cloud = get_db_cloud()
+                    cur_cloud = con_cloud.cursor()
+
+                    cur_cloud.execute("""
+                        UPDATE productos
+                        SET descripcion=%s,
+                            precio=%s,
+                            stock=%s
+                        WHERE id=%s
+                    """, (descripcion, precio, stock_val, producto_id))
+
+                    con_cloud.commit()
+                    con_cloud.close()
+
+                except Exception as e:
+                    print("⚠️ Error sync update producto:", e)
+
+        except Exception as e:
+            con.close()
+            return f"❌ Error al actualizar: {e}"
 
     # ================= LISTAR PRODUCTOS =================
-    ejecutar(cur, con, "SELECT id, codigo, descripcion, precio, stock FROM productos")
+    ejecutar(cur, con, """
+        SELECT id, codigo, descripcion, precio, stock
+        FROM productos
+        ORDER BY descripcion
+    """)
     productos = cur.fetchall()
 
     con.close()
