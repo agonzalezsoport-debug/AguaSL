@@ -5,7 +5,13 @@
 <h2>💰 POS Profesional</h2>
 
 <!-- ===================== AGREGAR PRODUCTO ===================== -->
-<div style="background:#f5f5f5;padding:15px;border-radius:12px;margin-bottom:15px;">
+<div style="
+    background:#f5f5f5;
+    padding:20px;
+    border-radius:12px;
+    margin-bottom:15px;
+    width:100%;
+">
 
 <h3>🔎 Agregar producto</h3>
 
@@ -13,14 +19,16 @@
       style="display:flex;gap:10px;align-items:center;">
 
     <input name="codigo"
-           placeholder="📦 Código o QR"
-           style="flex:2;padding:10px;font-size:16px;"
-           required>
+       id="codigo"
+       placeholder="📦 Escanear código de barras..."
+       style="flex:1;padding:22px;font-size:26px;border:2px solid #4CAF50;border-radius:10px;"
+       required autofocus autocomplete="off">
 
     <input name="cantidad"
            type="number"
            placeholder="Cant."
            min="1"
+           value="1"
            style="width:100px;padding:10px;font-size:16px;"
            required>
 
@@ -32,6 +40,110 @@
 </form>
 
 </div>
+
+{% if carrito %}
+
+<h3>🛒 Carrito</h3>
+
+<div style="background:#fff;padding:10px;border-radius:10px;">
+
+<table border="1" cellpadding="6" style="width:100%;">
+<tr>
+    <th>Producto</th>
+    <th>Cantidad</th>
+    <th>Subtotal</th>
+    <th></th>
+</tr>
+
+{% for item in carrito %}
+<tr>
+    <td>{{ item.desc }}</td>
+    <td>{{ item.cantidad }}</td>
+    <td>${{ item.precio * item.cantidad }}</td>
+    <td><a href="/carrito/eliminar/{{ loop.index0 }}">❌</a></td>
+</tr>
+{% endfor %}
+
+</table>
+
+<h2>💰 Total: $<span id="total">{{ total }}</span></h2>
+
+</div>
+
+<!-- ===================== VENTA ===================== -->
+<form method="POST" action="/carrito/confirmar" style="margin-top:15px;">
+
+    <!-- MÉTODO DE PAGO -->
+    <label>💳 Método de pago</label>
+    <select name="metodo_pago" id="metodo_pago" onchange="calcularTotal()">
+        <option value="efectivo">💵 Efectivo</option>
+        <option value="transferencia">🏦 Transferencia</option>
+        <option value="tarjeta">💳 Tarjeta</option>
+        <option value="qr">📱 QR</option>
+        <option value="fiado">📒 Fiado</option>
+    </select>
+
+    <!-- DESCUENTO -->
+    <div style="margin-top:10px;">
+        <label>🎯 Descuento %</label>
+        <input type="number" id="descuento" name="descuento"
+               value="0" min="0" max="100"
+               oninput="calcularTotal()">
+    </div>
+
+    <!-- RECARGO -->
+    <div id="recargoBox" style="display:none;margin-top:10px;">
+        <label>Recargo %</label>
+        <input type="number" id="recargo" name="recargo"
+               value="0" min="0" max="50"
+               oninput="calcularTotal()">
+    </div>
+
+    <!-- TOTAL FINAL -->
+    <h2>💰 Total final: $<span id="totalFinal">{{ total }}</span></h2>
+
+    <button type="submit"
+            style="padding:12px;width:100%;background:green;color:white;border:none;font-size:16px;">
+        💰 FINALIZAR VENTA
+    </button>
+
+</form>
+
+<!-- ===================== SCRIPT ===================== -->
+<script>
+function calcularTotal() {
+
+    let metodo = document.getElementById("metodo_pago").value;
+    let recargoBox = document.getElementById("recargoBox");
+
+    let total = parseFloat(document.getElementById("total").innerText || 0);
+    let recargo = parseFloat(document.getElementById("recargo").value || 0);
+    let descuento = parseFloat(document.getElementById("descuento").value || 0);
+
+    // mostrar recargo según método
+    if (metodo === "tarjeta" || metodo === "transferencia" || metodo === "qr") {
+        recargoBox.style.display = "block";
+    } else {
+        recargoBox.style.display = "none";
+        recargo = 0;
+    }
+
+    // cálculo
+    let totalConRecargo = total + (total * recargo / 100);
+    let totalFinal = totalConRecargo - (totalConRecargo * descuento / 100);
+
+    document.getElementById("totalFinal").innerText = totalFinal.toFixed(2);
+}
+
+// 🔥 calcular al cargar
+window.onload = calcularTotal;
+</script>
+
+{% else %}
+
+<p>🛒 Carrito vacío</p>
+
+{% endif %}
 
 <!-- ===================== PROMOS ===================== -->
 <h3>🎁 Promos disponibles</h3>
@@ -70,141 +182,6 @@
 </div>
 {% else %}
 <p>⚠️ No hay promos activas</p>
-{% endif %}
-
-<hr>
-
-<!-- ===================== PRODUCTOS ===================== -->
-<h3>📦 Productos disponibles</h3>
-
-<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
-
-{% for p in productos %}
-<div style="
-    border:1px solid #ddd;
-    padding:12px;
-    border-radius:12px;
-    background:#fff;
-    box-shadow:0 2px 6px rgba(0,0,0,0.05);
-">
-
-    <h4 style="margin:0;">{{ p[2] }}</h4>
-
-    <p><b>📦 Código:</b> {{ p[1] }}</p>
-    <p><b>💰 Precio:</b> ${{ p[4] }}</p>
-
-    <p style="{% if p[5] <= 5 %}color:red;font-weight:bold;{% endif %}">
-        <b>📊 Stock:</b> {{ p[5] }}
-    </p>
-
-    <form method="POST" action="/carrito/agregar"
-          style="display:flex;gap:5px;margin-top:10px;">
-
-        <input type="hidden" name="codigo" value="{{ p[1] }}">
-
-        <input type="number"
-               name="cantidad"
-               value="1"
-               min="1"
-               style="width:60px;padding:5px;"
-               required>
-
-        <button type="submit"
-                style="background:green;color:white;border:none;border-radius:6px;padding:6px;flex:1;">
-            ➕ Agregar
-        </button>
-
-    </form>
-
-</div>
-{% endfor %}
-
-</div>
-
-<hr>
-
-<!-- ===================== CARRITO ===================== -->
-{% if carrito %}
-
-<h3>🛒 Carrito</h3>
-
-<div style="background:#fff;padding:10px;border-radius:10px;">
-
-<table border="1" cellpadding="6" style="width:100%;">
-<tr>
-    <th>Producto</th>
-    <th>Cantidad</th>
-    <th>Subtotal</th>
-    <th></th>
-</tr>
-
-{% for item in carrito %}
-<tr>
-    <td>{{ item.desc }}</td>
-    <td>{{ item.cantidad }}</td>
-    <td>${{ item.precio * item.cantidad }}</td>
-    <td><a href="/carrito/eliminar/{{ loop.index0 }}">❌</a></td>
-</tr>
-{% endfor %}
-
-</table>
-
-<h2>💰 Total: $<span id="total">{{ total }}</span></h2>
-
-</div>
-
-<!-- ===================== VENTA ===================== -->
-<form method="POST" action="/carrito/confirmar" style="margin-top:15px;">
-
-    <label>💳 Método de pago</label>
-    <select name="metodo_pago" id="metodo_pago" onchange="calcularRecargo()">
-        <option value="efectivo">💵 Efectivo</option>
-        <option value="transferencia">🏦 Transferencia</option>
-        <option value="tarjeta">💳 Tarjeta</option>
-        <option value="qr">📱 QR</option>
-        <option value="fiado">📒 Fiado</option>
-    </select>
-
-    <div id="recargoBox" style="display:none;margin-top:10px;">
-        <label>Recargo %</label>
-        <input type="number" id="recargo" name="recargo"
-               value="0" min="0" max="50"
-               oninput="calcularRecargo()">
-    </div>
-
-    <h2>💰 Total final: $<span id="totalFinal">{{ total }}</span></h2>
-
-    <button type="submit"
-            style="padding:12px;width:100%;background:green;color:white;border:none;font-size:16px;">
-        💰 FINALIZAR VENTA
-    </button>
-
-</form>
-
-<script>
-function calcularRecargo() {
-    let metodo = document.getElementById("metodo_pago").value;
-    let box = document.getElementById("recargoBox");
-
-    let total = parseFloat(document.getElementById("total").innerText || 0);
-    let porcentaje = parseFloat(document.getElementById("recargo").value || 0);
-
-    if (metodo === "tarjeta" || metodo === "transferencia" || metodo === "qr") {
-        box.style.display = "block";
-    } else {
-        box.style.display = "none";
-        porcentaje = 0;
-    }
-
-    let final = total + (total * porcentaje / 100);
-    document.getElementById("totalFinal").innerText = final.toFixed(2);
-}
-</script>
-
-{% else %}
-
-<p>🛒 Carrito vacío</p>
-
 {% endif %}
 
 {% endblock %}
