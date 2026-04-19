@@ -3,6 +3,12 @@
 
 <h2 style="margin-bottom:20px;">📊 Dashboard Contable - Reporte General</h2>
 
+<form method="GET" style="margin-bottom:20px;">
+Desde: <input type="date" name="desde">
+Hasta: <input type="date" name="hasta">
+<button>Filtrar</button>
+</form>
+
 <!-- ================= KPIs ================= -->
 <div style="
     display:grid;
@@ -42,22 +48,41 @@
 
 <table class="table-pro">
 <thead>
-<tr>
-<th>Método</th>
-<th>Cantidad de ventas</th>
-<th>Total recaudado</th>
-</tr>
+    <tr>
+        <th>Método</th>
+        <th>Ventas</th>
+        <th>Subtotal</th>
+        <th>Recargo (+)</th>
+        <th>Descuento (-)</th>
+        <th>Total Final</th>
+    </tr>
 </thead>
 <tbody>
 {% for m in metodos %}
 <tr>
-<td>{{ m[0] }}</td>
-<td>{{ m[1] }}</td>
-<td>${{ "{:,.2f}".format(m[2]) }}</td>
+    <td>{{ m[0] }}</td>
+    <td>{{ m[1] }}</td>
+    <td>${{ "{:,.2f}".format(m[2] or 0) }}</td>
+    
+    <!-- Recargo -->
+    <td style="color: #d97706;">
+        +${{ "{:,.2f}".format(m[3] or 0) }}
+    </td>
+    
+    <!-- Descuento -->
+    <td style="color: #dc2626;">
+        -${{ "{:,.2f}".format(m[4] or 0) }}
+    </td>
+    
+    <!-- Total Final (Calculado o desde BD) -->
+    <td style="font-weight: bold; color: #16a34a;">
+        ${{ "{:,.2f}".format(m[5] or 0) }}
+    </td>
 </tr>
 {% endfor %}
 </tbody>
 </table>
+
 
 <!-- ================= VENTAS POR DÍA ================= -->
 <h3>📆 Resumen Diario de Ventas</h3>
@@ -102,6 +127,28 @@
 {% endfor %}
 </tbody>
 </table>
+<!-- ================= VENTAS POR DEPARTAMENTO ================= -->
+<h3>🏬 Ventas por Departamento / Promos</h3>
+
+<table class="table-pro">
+<thead>
+<tr>
+<th>Departamento</th>
+<th>Ventas</th>
+<th>Total vendido</th>
+</tr>
+</thead>
+
+<tbody>
+{% for d in ventas_departamento %}
+<tr>
+<td>{{ d[0] }}</td>
+<td>{{ d[1] }}</td>
+<td>${{ "{:,.2f}".format(d[2]) }}</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
 
 <!-- ================= PRODUCTOS MÁS VENDIDOS ================= -->
 <h3>🏆 Ranking de Productos</h3>
@@ -122,6 +169,34 @@
 <td>{{ p[1] }}</td>
 <td>${{ "{:,.2f}".format(p[2]) }}</td>
 <td>{{ p[3] }}</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+<!-- ================= HISTORIAL DE ITEMS ================= -->
+<h3>🧾 Historial de Ventas por Ítem</h3>
+
+<table class="table-pro">
+<thead>
+<tr>
+<th>Fecha</th>
+<th>Producto</th>
+<th>Cantidad</th>
+<th>Subtotal</th>
+<th>Método de pago</th>
+<th>Cajero</th>
+</tr>
+</thead>
+
+<tbody>
+{% for h in historial_items %}
+<tr>
+<td>{{ h[0] }}</td>
+<td>{{ h[1] }}</td>
+<td>{{ h[2] }}</td>
+<td>${{ "{:,.2f}".format(h[3]) }}</td>
+<td>{{ h[4] }}</td>
+<td>{{ h[5] }}</td>
 </tr>
 {% endfor %}
 </tbody>
