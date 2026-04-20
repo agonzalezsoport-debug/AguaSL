@@ -3,10 +3,27 @@
 
 <h2 style="margin-bottom:20px;">📊 Dashboard Contable - Reporte General</h2>
 
-<form method="GET" style="margin-bottom:20px;">
-Desde: <input type="date" name="desde">
-Hasta: <input type="date" name="hasta">
-<button>Filtrar</button>
+<form method="GET" style="margin-bottom:20px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+
+    <label>Desde:</label>
+    <input type="date" name="desde" value="{{ desde }}">
+
+    <label>Hasta:</label>
+    <input type="date" name="hasta" value="{{ hasta }}">
+
+    <button style="padding:6px 12px;">Filtrar</button>
+
+    <!-- 🔥 BOTONES RÁPIDOS -->
+    <a href="?desde={{ hasta }}&hasta={{ hasta }}" class="btn-mini">Hoy</a>
+
+    <a href="?desde={{ hasta[:7] }}-01&hasta={{ hasta }}" class="btn-mini">
+        Este mes
+    </a>
+
+    <a href="/reporte_ventas" class="btn-mini reset">
+        Reset
+    </a>
+
 </form>
 
 <!-- ================= KPIs ================= -->
@@ -245,6 +262,27 @@ Hasta: <input type="date" name="hasta">
     border-radius:12px;
     overflow:hidden;
     box-shadow:0 5px 15px rgba(0,0,0,0.08);
+}
+.btn-mini{
+    padding:6px 10px;
+    background:#e2e8f0;
+    border-radius:8px;
+    text-decoration:none;
+    font-size:12px;
+    color:#0f172a;
+    transition:0.2s;
+}
+
+.btn-mini:hover{
+    background:#cbd5e1;
+}
+
+.btn-mini.reset{
+    background:#fee2e2;
+}
+
+.btn-mini.reset:hover{
+    background:#fecaca;
 }
 
 .table-pro th{
