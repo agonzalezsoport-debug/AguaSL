@@ -825,97 +825,97 @@ def cambiar_estado(id, estado):
     con.close()
 
     return redirect("/pedidos")
-@app.route("/ventas_por_cajero")
-def ventas_por_cajero():
+@app.route("/reporte_ventas_cajero")
+def reporte_ventas_cajero():
     if not session.get("admin") and not session.get("puede_ver_reportes"):
-        return "❌ No tenés permiso para ver esto"
-
-    cajero_filtro = request.args.get("cajero")
+        return "❌ Sin permiso"
 
     con = get_db()
     cur = con.cursor()
 
-    # ================= LISTA DE CAJEROS =================
-    ejecutar(cur, con, """
-        SELECT DISTINCT cajero
-        FROM ventas
-        ORDER BY cajero
-    """)
-    cajeros = cur.fetchall()
+    cajero = request.args.get("cajero")
 
-    # ================= FILTRO =================
-    filtro_sql = ""
-    params = ()
+    filtros = []
+    params = []
 
-    if cajero_filtro:
-        filtro_sql = "WHERE cajero=%s"
-        params = (cajero_filtro,)
+    if cajero:
+        filtros.append("v.cajero = %s")
+        params.append(cajero)
 
-    # ================= RESUMEN =================
+    where = "WHERE " + " AND ".join(filtros) if filtros else ""
+
+    
+    # ================= TOTAL VENTAS (CON DESGLOSE) =================
     ejecutar(cur, con, f"""
-        SELECT COUNT(*), COALESCE(SUM(total_final),0)
-        FROM ventas
-        {filtro_sql}
+        SELECT 
+            COUNT(*),
+            COALESCE(SUM(total),0),
+            COALESCE(SUM(recargo),0),
+            COALESCE(SUM(descuento),0),
+            COALESCE(SUM(total_final),0)
+        FROM ventas v
+        {where}
     """, params)
 
-    total_ventas, total_dinero = cur.fetchone()
+    total_ventas, total_bruto, total_recargo, total_descuento, total_dinero = cur.fetchone()
 
     # ================= PRODUCTOS =================
     ejecutar(cur, con, f"""
-        SELECT 
-            p.descripcion,
-            COALESCE(SUM(v.cantidad),0),
-            COALESCE(SUM(v.subtotal),0)
-        FROM venta_items v
-        JOIN productos p ON v.producto_id = p.id
-        JOIN ventas ve ON ve.id = v.venta_id
-        {filtro_sql.replace("cajero", "ve.cajero")}
+        SELECT p.descripcion, SUM(vi.cantidad), SUM(vi.subtotal)
+        FROM ventas v
+        JOIN venta_items vi ON v.id = vi.venta_id
+        JOIN productos p ON p.id = vi.producto_id
+        {where}
         GROUP BY p.descripcion
-        ORDER BY 2 DESC
+        ORDER BY SUM(vi.cantidad) DESC
     """, params)
-
     productos = cur.fetchall()
 
-    # ================= MÉTODOS =================
+    
+    # ================= MÉTODOS (CON DESGLOSE) =================
     ejecutar(cur, con, f"""
-        SELECT 
-            metodo_pago,
+        SELECT metodo_pago,
             COUNT(*),
+            COALESCE(SUM(total),0),
+            COALESCE(SUM(recargo),0),
+            COALESCE(SUM(descuento),0),
             COALESCE(SUM(total_final),0)
-        FROM ventas
-        {filtro_sql}
+        FROM ventas v
+        {where}
         GROUP BY metodo_pago
     """, params)
 
     metodos = cur.fetchall()
 
-    # ================= AUDITORIA =================
+    # ================= AUDITORIA STOCK =================
     ejecutar(cur, con, f"""
-        SELECT 
-            p.descripcion,
-            p.stock,
-            COALESCE(SUM(v.cantidad),0)
+        SELECT p.descripcion, p.stock, COALESCE(SUM(vi.cantidad),0)
         FROM productos p
-        LEFT JOIN venta_items v ON v.producto_id = p.id
-        LEFT JOIN ventas ve ON ve.id = v.venta_id
-        {filtro_sql.replace("cajero", "ve.cajero")}
+        LEFT JOIN venta_items vi ON p.id = vi.producto_id
+        LEFT JOIN ventas v ON v.id = vi.venta_id
+        {where}
         GROUP BY p.id
-        ORDER BY 3 DESC
     """, params)
-
     auditoria = cur.fetchall()
+
+    # ================= LISTA CAJEROS =================
+    ejecutar(cur, con, "SELECT DISTINCT cajero FROM ventas")
+    cajeros = cur.fetchall()
 
     con.close()
 
     return render_template(
-        "ventas_por_cajero.html",
-        cajeros=cajeros,
-        total_ventas=total_ventas,
-        total_dinero=total_dinero,
-        productos=productos,
-        metodos=metodos,
-        auditoria=auditoria
-    )
+    "reporte_ventas_cajero.html",
+    total_ventas=total_ventas,
+    total_bruto=total_bruto,
+    total_recargo=total_recargo,
+    total_descuento=total_descuento,
+    total_dinero=total_dinero,
+    productos=productos,
+    metodos=metodos,
+    auditoria=auditoria,
+    cajeros=cajeros
+)
 
 
 # ================== VENTAS ==================
