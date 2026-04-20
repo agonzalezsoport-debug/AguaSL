@@ -825,6 +825,89 @@ def cambiar_estado(id, estado):
     con.close()
 
     return redirect("/pedidos")
+    @app.route("/ventas_por_cajero")
+def ventas_por_cajero():
+    if not session.get("admin") and not session.get("puede_ver_reportes"):
+        return "❌ Sin permiso"
+
+    cajero_filtro = request.args.get("cajero")
+
+    con = get_db()
+    cur = con.cursor()
+
+    # ================= CAJEROS =================
+    ejecutar(cur, con, """
+        SELECT DISTINCT cajero FROM ventas
+    """)
+    cajeros = cur.fetchall()
+
+    # ================= WHERE DINÁMICO =================
+    where = ""
+    params = ()
+
+    if cajero_filtro:
+        where = "WHERE cajero=%s"
+        params = (cajero_filtro,)
+
+    # ================= RESUMEN =================
+    ejecutar(cur, con, f"""
+        SELECT COUNT(*), COALESCE(SUM(total_final),0)
+        FROM ventas
+        {where}
+    """, params)
+
+    total_ventas, total_dinero = cur.fetchone()
+
+    # ================= PRODUCTOS =================
+    ejecutar(cur, con, f"""
+        SELECT p.descripcion,
+               COALESCE(SUM(v.cantidad),0),
+               COALESCE(SUM(v.subtotal),0)
+        FROM venta_items v
+        JOIN productos p ON v.producto_id = p.id
+        JOIN ventas ve ON ve.id = v.venta_id
+        {where.replace("cajero", "ve.cajero")}
+        GROUP BY p.descripcion
+        ORDER BY SUM(v.cantidad) DESC
+    """, params)
+
+    productos = cur.fetchall()
+
+    # ================= MÉTODOS =================
+    ejecutar(cur, con, f"""
+        SELECT metodo_pago,
+               COUNT(*),
+               COALESCE(SUM(total_final),0)
+        FROM ventas
+        {where}
+        GROUP BY metodo_pago
+    """, params)
+
+    metodos = cur.fetchall()
+
+    # ================= AUDITORIA =================
+    ejecutar(cur, con, """
+        SELECT p.descripcion,
+               p.stock,
+               COALESCE(SUM(v.cantidad),0)
+        FROM productos p
+        LEFT JOIN venta_items v ON v.producto_id = p.id
+        GROUP BY p.id
+    """)
+
+    auditoria = cur.fetchall()
+
+    con.close()
+
+    return render_template(
+        "ventas_por_cajero.html",
+        cajeros=cajeros,
+        productos=productos,
+        metodos=metodos,
+        auditoria=auditoria,
+        total_ventas=total_ventas,
+        total_dinero=total_dinero
+    )
 
 
 # ================== VENTAS ==================
