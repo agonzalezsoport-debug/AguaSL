@@ -825,7 +825,7 @@ def cambiar_estado(id, estado):
     con.close()
 
     return redirect("/pedidos")
-    @app.route("/ventas_por_cajero")
+@app.route("/ventas_por_cajero")
 def ventas_por_cajero():
     if not session.get("admin") and not session.get("puede_ver_reportes"):
         return "❌ Sin permiso"
