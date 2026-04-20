@@ -8,6 +8,7 @@ import time
 import json
 import sqlite3
 import uuid
+from datetime import datetime
 print("🔥🔥🔥 ESTE ES EL ARCHIVO CORRECTO 🔥🔥🔥")
 
 app = Flask(__name__)
@@ -553,7 +554,119 @@ def promos():
     con.close()
 
     return render_template("promos.html", promos=data)
+from datetime import datetime
 
+@app.route("/reporte_ventas_cajero")
+def reporte_ventas_cajero():
+    if not session.get("admin") and not session.get("puede_ver_reportes"):
+        return "❌ Sin permiso"
+
+    con = get_db()
+    cur = con.cursor()
+    
+
+    cajero = request.args.get("cajero")
+    fecha = request.args.get("fecha")
+
+    # 📅 SI NO HAY FECHA → HOY
+    if not fecha:
+        fecha = datetime.now().strftime("%Y-%m-%d")
+
+    # ================= FILTROS =================
+    filtros = []
+    params = []
+
+    # 📅 FILTRO POR FECHA (SIEMPRE)
+    filtros.append("DATE(v.fecha) = %s")
+    params.append(fecha)
+
+    # 👤 FILTRO POR CAJERO (OPCIONAL)
+    if cajero:
+        filtros.append("v.cajero = %s")
+        params.append(cajero)
+
+    where = "WHERE " + " AND ".join(filtros)
+
+    # ================= TOTAL VENTAS =================
+    ejecutar(cur, con, f"""
+        SELECT 
+            COUNT(*),
+            COALESCE(SUM(total),0),
+            COALESCE(SUM(recargo),0),
+            COALESCE(SUM(descuento),0),
+            COALESCE(SUM(total_final),0)
+        FROM ventas v
+        {where}
+    """, params)
+
+    total_ventas, total_bruto, total_recargo, total_descuento, total_dinero = cur.fetchone()
+
+    # ================= PRODUCTOS =================
+    ejecutar(cur, con, f"""
+        SELECT p.descripcion, SUM(vi.cantidad), SUM(vi.subtotal)
+        FROM ventas v
+        JOIN venta_items vi ON v.id = vi.venta_id
+        JOIN productos p ON p.id = vi.producto_id
+        {where}
+        GROUP BY p.descripcion
+        ORDER BY SUM(vi.cantidad) DESC
+    """, params)
+
+    productos = cur.fetchall()
+
+    # ================= MÉTODOS DE PAGO =================
+    ejecutar(cur, con, f"""
+        SELECT metodo_pago,
+            COUNT(*),
+            COALESCE(SUM(total),0),
+            COALESCE(SUM(recargo),0),
+            COALESCE(SUM(descuento),0),
+            COALESCE(SUM(total_final),0)
+        FROM ventas v
+        {where}
+        GROUP BY metodo_pago
+    """, params)
+
+    metodos = cur.fetchall()
+
+    # ================= AUDITORÍA STOCK (CORREGIDA) =================
+    auditoria_params = [fecha]
+    auditoria_sql = """
+        SELECT p.descripcion, p.stock, COALESCE(SUM(vi.cantidad),0)
+        FROM productos p
+        LEFT JOIN venta_items vi ON p.id = vi.producto_id
+        LEFT JOIN ventas v ON v.id = vi.venta_id
+        AND DATE(v.fecha) = %s
+    """
+
+    if cajero:
+        auditoria_sql += " AND v.cajero = %s"
+        auditoria_params.append(cajero)
+
+    auditoria_sql += " GROUP BY p.id"
+
+    ejecutar(cur, con, auditoria_sql, auditoria_params)
+    auditoria = cur.fetchall()
+
+    # ================= LISTA CAJEROS =================
+    ejecutar(cur, con, "SELECT DISTINCT cajero FROM ventas")
+    cajeros = cur.fetchall()
+
+    con.close()
+
+    return render_template(
+        "reporte_ventas_cajero.html",
+        total_ventas=total_ventas,
+        total_bruto=total_bruto,
+        total_recargo=total_recargo,
+        total_descuento=total_descuento,
+        total_dinero=total_dinero,
+        productos=productos,
+        metodos=metodos,
+        auditoria=auditoria,
+        cajeros=cajeros,
+        fecha=fecha
+    )
 @app.route("/promos/agregar", methods=["POST"])
 def agregar_promo():
     if not session.get("admin") and not session.get("puede_agregar_productos"):
@@ -825,97 +938,6 @@ def cambiar_estado(id, estado):
     con.close()
 
     return redirect("/pedidos")
-@app.route("/reporte_ventas_cajero")
-def reporte_ventas_cajero():
-    if not session.get("admin") and not session.get("puede_ver_reportes"):
-        return "❌ Sin permiso"
-
-    con = get_db()
-    cur = con.cursor()
-
-    cajero = request.args.get("cajero")
-
-    filtros = []
-    params = []
-
-    if cajero:
-        filtros.append("v.cajero = %s")
-        params.append(cajero)
-
-    where = "WHERE " + " AND ".join(filtros) if filtros else ""
-
-    
-    # ================= TOTAL VENTAS (CON DESGLOSE) =================
-    ejecutar(cur, con, f"""
-        SELECT 
-            COUNT(*),
-            COALESCE(SUM(total),0),
-            COALESCE(SUM(recargo),0),
-            COALESCE(SUM(descuento),0),
-            COALESCE(SUM(total_final),0)
-        FROM ventas v
-        {where}
-    """, params)
-
-    total_ventas, total_bruto, total_recargo, total_descuento, total_dinero = cur.fetchone()
-
-    # ================= PRODUCTOS =================
-    ejecutar(cur, con, f"""
-        SELECT p.descripcion, SUM(vi.cantidad), SUM(vi.subtotal)
-        FROM ventas v
-        JOIN venta_items vi ON v.id = vi.venta_id
-        JOIN productos p ON p.id = vi.producto_id
-        {where}
-        GROUP BY p.descripcion
-        ORDER BY SUM(vi.cantidad) DESC
-    """, params)
-    productos = cur.fetchall()
-
-    
-    # ================= MÉTODOS (CON DESGLOSE) =================
-    ejecutar(cur, con, f"""
-        SELECT metodo_pago,
-            COUNT(*),
-            COALESCE(SUM(total),0),
-            COALESCE(SUM(recargo),0),
-            COALESCE(SUM(descuento),0),
-            COALESCE(SUM(total_final),0)
-        FROM ventas v
-        {where}
-        GROUP BY metodo_pago
-    """, params)
-
-    metodos = cur.fetchall()
-
-    # ================= AUDITORIA STOCK =================
-    ejecutar(cur, con, f"""
-        SELECT p.descripcion, p.stock, COALESCE(SUM(vi.cantidad),0)
-        FROM productos p
-        LEFT JOIN venta_items vi ON p.id = vi.producto_id
-        LEFT JOIN ventas v ON v.id = vi.venta_id
-        {where}
-        GROUP BY p.id
-    """, params)
-    auditoria = cur.fetchall()
-
-    # ================= LISTA CAJEROS =================
-    ejecutar(cur, con, "SELECT DISTINCT cajero FROM ventas")
-    cajeros = cur.fetchall()
-
-    con.close()
-
-    return render_template(
-    "reporte_ventas_cajero.html",
-    total_ventas=total_ventas,
-    total_bruto=total_bruto,
-    total_recargo=total_recargo,
-    total_descuento=total_descuento,
-    total_dinero=total_dinero,
-    productos=productos,
-    metodos=metodos,
-    auditoria=auditoria,
-    cajeros=cajeros
-)
 
 
 # ================== VENTAS ==================
@@ -1144,52 +1166,70 @@ def reporte_ventas():
     con = get_db()
     cur = con.cursor()
 
+    # ================= FILTROS =================
+    desde = request.args.get("desde")
+    hasta = request.args.get("hasta")
+
+    if not desde:
+        desde = datetime.now().strftime("%Y-%m-%d")
+
+    if not hasta:
+        hasta = datetime.now().strftime("%Y-%m-%d")
+
+    where = "WHERE DATE(fecha) BETWEEN %s AND %s"
+    params = [desde, hasta]
+
     # ================= VENTAS GENERALES =================
-    ejecutar(cur, con, """
+    ejecutar(cur, con, f"""
         SELECT COUNT(*), COALESCE(SUM(total_final),0)
         FROM ventas
-    """)
+        {where}
+    """, params)
     total_ventas, total_dinero = cur.fetchone()
 
     # ================= UTILIDAD =================
-    ejecutar(cur, con, """
+    ejecutar(cur, con, f"""
         SELECT COALESCE(SUM(total_final),0)
         FROM ventas
-    """)
+        {where}
+    """, params)
     utilidad = cur.fetchone()[0]
 
     # ================= VENTAS POR DÍA =================
-    ejecutar(cur, con, """
+    ejecutar(cur, con, f"""
         SELECT DATE(fecha),
                COUNT(*),
                COALESCE(SUM(total_final),0)
         FROM ventas
+        {where}
         GROUP BY DATE(fecha)
         ORDER BY DATE(fecha) DESC
-        LIMIT 10
-    """)
+    """, params)
     ventas_dia = cur.fetchall()
 
     # ================= MÉTODOS DE PAGO =================
-    ejecutar(cur, con, """
+    ejecutar(cur, con, f"""
         SELECT 
             metodo_pago,
-            COUNT(*) as cantidad,
-            COALESCE(SUM(total),0) as subtotal,
-            COALESCE(SUM(recargo),0) as recargo_total,
-            COALESCE(SUM(descuento),0) as descuento_total,
-            COALESCE(SUM(total_final),0) as total_final
+            COUNT(*),
+            COALESCE(SUM(total),0),
+            COALESCE(SUM(recargo),0),
+            COALESCE(SUM(descuento),0),
+            COALESCE(SUM(total_final),0)
         FROM ventas
+        {where}
         GROUP BY metodo_pago
-        ORDER BY cantidad DESC
-    """)
+        ORDER BY COUNT(*) DESC
+    """, params)
     metodos = cur.fetchall()
 
     # ================= LITROS VENDIDOS =================
-    ejecutar(cur, con, """
+    ejecutar(cur, con, f"""
         SELECT COALESCE(SUM(vi.litros_total),0)
         FROM venta_items vi
-    """)
+        JOIN ventas v ON v.id = vi.venta_id
+        WHERE DATE(v.fecha) BETWEEN %s AND %s
+    """, params)
     litros_vendidos = cur.fetchone()[0]
 
     # ================= STOCK ACTUAL =================
@@ -1197,79 +1237,70 @@ def reporte_ventas():
     stock_actual = cur.fetchone()[0]
 
     # ================= AUDITORÍA STOCK =================
-    ejecutar(cur, con, """
+    ejecutar(cur, con, f"""
         SELECT p.descripcion,
                p.stock,
-               COALESCE(SUM(v.cantidad),0) as vendidos
+               COALESCE(SUM(v.cantidad),0)
         FROM productos p
         LEFT JOIN venta_items v ON v.producto_id = p.id
+        LEFT JOIN ventas ve ON ve.id = v.venta_id
+        AND DATE(ve.fecha) BETWEEN %s AND %s
         GROUP BY p.id
-        ORDER BY vendidos DESC
-    """)
+        ORDER BY SUM(v.cantidad) DESC
+    """, params)
     auditoria_stock = cur.fetchall()
 
     # ================= PRODUCTOS MÁS VENDIDOS =================
-    ejecutar(cur, con, """
+    ejecutar(cur, con, f"""
         SELECT 
             p.descripcion,
-            COALESCE(SUM(v.cantidad),0) as total_unidades,
-            COALESCE(SUM(v.subtotal),0) as total_vendido
+            COALESCE(SUM(v.cantidad),0),
+            COALESCE(SUM(v.subtotal),0)
         FROM venta_items v
         JOIN productos p ON v.producto_id = p.id
+        JOIN ventas ve ON ve.id = v.venta_id
+        WHERE DATE(ve.fecha) BETWEEN %s AND %s
         GROUP BY p.descripcion
-        ORDER BY total_unidades DESC
+        ORDER BY SUM(v.cantidad) DESC
         LIMIT 10
-    """)
+    """, params)
     productos_vendidos = cur.fetchall()
 
     # ================= VENTAS POR DEPARTAMENTO =================
-    ejecutar(cur, con, """
+    ejecutar(cur, con, f"""
         SELECT 
-            COALESCE(p.departamento, 'Sin asignar') AS departamento,
-            COUNT(DISTINCT v.id) AS ventas,
-            COALESCE(SUM(v.total_final), 0) AS total_vendido
+            COALESCE(p.departamento, 'Sin asignar'),
+            COUNT(DISTINCT v.id),
+            COALESCE(SUM(v.total_final), 0)
         FROM ventas v
         JOIN venta_items vi ON v.id = vi.venta_id
         JOIN productos p ON vi.producto_id = p.id
+        WHERE DATE(v.fecha) BETWEEN %s AND %s
         GROUP BY p.departamento
-        ORDER BY total_vendido DESC
-    """)
+        ORDER BY SUM(v.total_final) DESC
+    """, params)
+    ventas_departamento = cur.fetchall()
 
-    ventas_departamento = cur.fetchall()  # ✅ CORRECTO
-
-    # ================= HISTORIAL POR ITEMS =================
-    ejecutar(cur, con, """
+    # ================= HISTORIAL DE ITEMS =================
+    ejecutar(cur, con, f"""
         SELECT 
             v.fecha,
-
             CASE 
-                WHEN vi.producto_id LIKE 'promo_%' 
-                    THEN pr.nombre
-                ELSE 
-                    p.descripcion
-            END AS producto,
-
+                WHEN vi.producto_id LIKE 'promo_%' THEN pr.nombre
+                ELSE p.descripcion
+            END,
             vi.cantidad,
             vi.subtotal,
             v.metodo_pago,
             v.cajero
-
         FROM ventas v
         JOIN venta_items vi ON v.id = vi.venta_id
-
-        LEFT JOIN productos p 
-            ON vi.producto_id = p.id
-
-        LEFT JOIN promos pr 
-            ON vi.producto_id = 'promo_' || pr.id
-
+        LEFT JOIN productos p ON vi.producto_id = p.id
+        LEFT JOIN promos pr ON vi.producto_id = 'promo_' || pr.id
+        WHERE DATE(v.fecha) BETWEEN %s AND %s
         ORDER BY v.fecha DESC
-    """)
-
-    historial_items = cur.fetchall()  # ✅ CORRECTO
-
-   
-   
+    """, params)
+    historial_items = cur.fetchall()
 
     con.close()
 
@@ -1285,7 +1316,9 @@ def reporte_ventas():
         auditoria_stock=auditoria_stock,
         productos_vendidos=productos_vendidos,
         ventas_departamento=ventas_departamento,
-        historial_items=historial_items
+        historial_items=historial_items,
+        desde=desde,
+        hasta=hasta
     )
 @app.route("/promo/agregar_producto", methods=["POST"])
 def agregar_producto_a_promo():
