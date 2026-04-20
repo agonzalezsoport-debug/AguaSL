@@ -1176,55 +1176,55 @@ def reporte_ventas():
     if not hasta:
         hasta = datetime.now().strftime("%Y-%m-%d")
 
-    where = "WHERE DATE(fecha) BETWEEN %s AND %s"
-    params = [desde, hasta]
+    where = "WHERE DATE(v.fecha) BETWEEN %s AND %s"
+    params = (desde, hasta)  # 🔥 SIEMPRE TUPLA
 
     # ================= VENTAS GENERALES =================
     ejecutar(cur, con, f"""
-        SELECT COUNT(*), COALESCE(SUM(total_final),0)
-        FROM ventas
+        SELECT COUNT(*), COALESCE(SUM(v.total_final),0)
+        FROM ventas v
         {where}
     """, params)
     total_ventas, total_dinero = cur.fetchone()
 
     # ================= UTILIDAD =================
     ejecutar(cur, con, f"""
-        SELECT COALESCE(SUM(total_final),0)
-        FROM ventas
+        SELECT COALESCE(SUM(v.total_final),0)
+        FROM ventas v
         {where}
     """, params)
     utilidad = cur.fetchone()[0]
 
     # ================= VENTAS POR DÍA =================
     ejecutar(cur, con, f"""
-        SELECT DATE(fecha),
+        SELECT DATE(v.fecha),
                COUNT(*),
-               COALESCE(SUM(total_final),0)
-        FROM ventas
+               COALESCE(SUM(v.total_final),0)
+        FROM ventas v
         {where}
-        GROUP BY DATE(fecha)
-        ORDER BY DATE(fecha) DESC
+        GROUP BY DATE(v.fecha)
+        ORDER BY DATE(v.fecha) DESC
     """, params)
     ventas_dia = cur.fetchall()
 
     # ================= MÉTODOS DE PAGO =================
     ejecutar(cur, con, f"""
         SELECT 
-            metodo_pago,
+            v.metodo_pago,
             COUNT(*),
-            COALESCE(SUM(total),0),
-            COALESCE(SUM(recargo),0),
-            COALESCE(SUM(descuento),0),
-            COALESCE(SUM(total_final),0)
-        FROM ventas
+            COALESCE(SUM(v.total),0),
+            COALESCE(SUM(v.recargo),0),
+            COALESCE(SUM(v.descuento),0),
+            COALESCE(SUM(v.total_final),0)
+        FROM ventas v
         {where}
-        GROUP BY metodo_pago
+        GROUP BY v.metodo_pago
         ORDER BY COUNT(*) DESC
     """, params)
     metodos = cur.fetchall()
 
     # ================= LITROS VENDIDOS =================
-    ejecutar(cur, con, f"""
+    ejecutar(cur, con, """
         SELECT COALESCE(SUM(vi.litros_total),0)
         FROM venta_items vi
         JOIN ventas v ON v.id = vi.venta_id
@@ -1236,38 +1236,39 @@ def reporte_ventas():
     ejecutar(cur, con, "SELECT COALESCE(SUM(stock),0) FROM productos")
     stock_actual = cur.fetchone()[0]
 
-    # ================= AUDITORÍA STOCK =================
-    ejecutar(cur, con, f"""
-        SELECT p.descripcion,
-               p.stock,
-               COALESCE(SUM(v.cantidad),0)
+    # ================= AUDITORÍA STOCK (FIX REAL) =================
+    ejecutar(cur, con, """
+        SELECT 
+            p.descripcion,
+            p.stock,
+            COALESCE(SUM(vi.cantidad),0)
         FROM productos p
-        LEFT JOIN venta_items v ON v.producto_id = p.id
-        LEFT JOIN ventas ve ON ve.id = v.venta_id
-        AND DATE(ve.fecha) BETWEEN %s AND %s
+        LEFT JOIN venta_items vi ON vi.producto_id = p.id
+        LEFT JOIN ventas v ON v.id = vi.venta_id
+        WHERE (DATE(v.fecha) BETWEEN %s AND %s OR v.fecha IS NULL)
         GROUP BY p.id
-        ORDER BY SUM(v.cantidad) DESC
+        ORDER BY COALESCE(SUM(vi.cantidad),0) DESC
     """, params)
     auditoria_stock = cur.fetchall()
 
     # ================= PRODUCTOS MÁS VENDIDOS =================
-    ejecutar(cur, con, f"""
+    ejecutar(cur, con, """
         SELECT 
             p.descripcion,
-            COALESCE(SUM(v.cantidad),0),
-            COALESCE(SUM(v.subtotal),0)
-        FROM venta_items v
-        JOIN productos p ON v.producto_id = p.id
-        JOIN ventas ve ON ve.id = v.venta_id
-        WHERE DATE(ve.fecha) BETWEEN %s AND %s
+            COALESCE(SUM(vi.cantidad),0),
+            COALESCE(SUM(vi.subtotal),0)
+        FROM venta_items vi
+        JOIN productos p ON vi.producto_id = p.id
+        JOIN ventas v ON v.id = vi.venta_id
+        WHERE DATE(v.fecha) BETWEEN %s AND %s
         GROUP BY p.descripcion
-        ORDER BY SUM(v.cantidad) DESC
+        ORDER BY SUM(vi.cantidad) DESC
         LIMIT 10
     """, params)
     productos_vendidos = cur.fetchall()
 
     # ================= VENTAS POR DEPARTAMENTO =================
-    ejecutar(cur, con, f"""
+    ejecutar(cur, con, """
         SELECT 
             COALESCE(p.departamento, 'Sin asignar'),
             COUNT(DISTINCT v.id),
@@ -1281,14 +1282,11 @@ def reporte_ventas():
     """, params)
     ventas_departamento = cur.fetchall()
 
-    # ================= HISTORIAL DE ITEMS =================
-    ejecutar(cur, con, f"""
+    # ================= HISTORIAL DE ITEMS (FIX PRO) =================
+    ejecutar(cur, con, """
         SELECT 
             v.fecha,
-            CASE 
-                WHEN vi.producto_id LIKE 'promo_%' THEN pr.nombre
-                ELSE p.descripcion
-            END,
+            COALESCE(p.descripcion, pr.nombre),
             vi.cantidad,
             vi.subtotal,
             v.metodo_pago,
