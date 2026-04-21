@@ -59,7 +59,7 @@
         <a href="/reporte_ventas">📁Reporte Inventario</a>
         <a href="/cajeros">👨‍💼Administracion de Cajeros</a>
         <a href="/crear_cajero">📦 Crear Cajero</a>
-        <a href="/logout" onclick="return confirmarLogout()">🚪Salir</a>
+        <a href="#" class="btn-salir">Salir</a>
 
     <!-- ================= CAJERO ================= -->
     {% elif session.get("cajero_id") %}
@@ -95,13 +95,13 @@
             <span class="disabled">📦Productos</span>
         {% endif %}
 
-        <a href="/logout" onclick="return confirmarLogout()">🚪Salir</a>
+        <a href="#" class="btn-salir">Salir</a>
 
     <!-- ================= CLIENTE ================= -->
     {% elif session.get("cliente_id") %}
 
         <a href="/mis_pedidos">📦Ver Pedidos</a>
-        <a href="/logout_cliente">🚪Salir</a>
+        <a href="#" class="btn-salir">Salir</a>
 
     {% endif %}
 
@@ -116,6 +116,57 @@ links.forEach(link => {
     if (link.href === window.location.href) {
         link.classList.add("active");
     }
+});
+</script>
+<script>
+
+</script>
+<script>
+
+</script>
+<div id="modalSalir" class="modal">
+    <div class="modal-box">
+        <h2>¿Cerrar sesión?</h2>
+        <p>Se cerrará la sesión y se perderán los datos no guardados.</p>
+
+        <div class="modal-actions">
+            <button class="btn-cancelar">Cancelar</button>
+            <button class="btn-confirmar">Sí, salir</button>
+        </div>
+    </div>
+</div>
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+
+    const modal = document.getElementById("modalSalir");
+    const btnCancelar = document.querySelector(".btn-cancelar");
+    const btnConfirmar = document.querySelector(".btn-confirmar");
+
+    // 👉 ABRIR MODAL
+    document.querySelectorAll(".btn-salir").forEach(btn => {
+        btn.addEventListener("click", function (e) {
+            e.preventDefault();
+            modal.style.display = "flex";
+        });
+    });
+
+    // 👉 CANCELAR
+    btnCancelar.addEventListener("click", function () {
+        modal.style.display = "none";
+    });
+
+    // 👉 CONFIRMAR SALIDA
+    btnConfirmar.addEventListener("click", function () {
+        window.location.href = "/logout";
+    });
+
+    // 👉 CERRAR HACIENDO CLICK AFUERA
+    window.addEventListener("click", function (e) {
+        if (e.target === modal) {
+            modal.style.display = "none";
+        }
+    });
+
 });
 </script>
 
