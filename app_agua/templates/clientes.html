@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>Clientes</h2>
+
+<div class="card">
+<form method="POST" action="/clientes/agregar">
+    <input name="nombre" placeholder="Nombre" required>
+    <input name="telefono" placeholder="Teléfono">
+    <input name="direccion" placeholder="Dirección">
+    <button>Guardar Cliente</button>
+</form>
+</div>
+
+{% for c in clientes %}
+<div class="card">
+    <b>{{c[1]}}</b><br>
+    📞 {{c[2]}}<br>
+    📍 {{c[3]}}
+</div>
+{% endfor %}
+
+{% endblock %}
