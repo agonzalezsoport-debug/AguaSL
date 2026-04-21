@@ -14,6 +14,10 @@
 ">
 
 <h3>🔎 Agregar producto</h3>
+<button type="button" onclick="abrirBuscador()"
+        style="margin-bottom:10px;padding:10px 15px;background:#2563eb;color:white;border:none;border-radius:8px;">
+    🔎 Buscar producto (F10)
+</button>
 
 <form method="POST" action="/carrito/agregar"
       style="display:flex;gap:10px;align-items:center;">
@@ -144,6 +148,97 @@ window.onload = calcularTotal;
 <p>🛒 Carrito vacío</p>
 
 {% endif %}
+<script>
+// 👉 abrir modal
+function abrirBuscador() {
+    document.getElementById("modalBuscador").style.display = "flex";
+    activarBuscador();   // 🔥 CLAVE
+    document.getElementById("busqueda").focus();
+}
+
+// 👉 cerrar modal
+function cerrarBuscador() {
+    document.getElementById("modalBuscador").style.display = "none";
+}
+
+// 🔥 F10 abre buscador
+document.addEventListener("keydown", function(e) {
+    if (e.key === "F10") {
+        e.preventDefault();
+        abrirBuscador();
+    }
+});
+
+// 🔎 buscar productos
+function activarBuscador() {
+
+    let input = document.getElementById("busqueda");
+
+    if (!input) return;
+
+    input.addEventListener("input", function() {
+
+        let texto = this.value;
+
+        fetch(`/buscar_productos?q=${texto}`)
+            .then(res => res.json())
+            .then(data => {
+
+                let html = "";
+
+                data.forEach(p => {
+                    html += `
+                        <div style="padding:10px;border-bottom:1px solid #ddd;cursor:pointer;"
+                             onclick="agregarProducto('${p.codigo}')">
+                            📦 ${p.descripcion} - $${p.precio}
+                        </div>
+                    `;
+                });
+
+                document.getElementById("resultados").innerHTML = html;
+            });
+
+    });
+}
+
+    let texto = this.value;
+
+    fetch(`/buscar_productos?q=${texto}`)
+        .then(res => res.json())
+        .then(data => {
+
+            let html = "";
+
+            data.forEach(p => {
+                html += `
+                    <div style="padding:10px;border-bottom:1px solid #ddd;cursor:pointer;"
+                         onclick="agregarProducto('${p.codigo}')">
+                        📦 ${p.descripcion} - $${p.precio}
+                    </div>
+                `;
+            });
+
+            document.getElementById("resultados").innerHTML = html;
+        });
+
+
+
+// 👉 agregar producto al carrito
+function agregarProducto(codigo) {
+
+    fetch("/carrito/agregar", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/x-www-form-urlencoded"
+        },
+        body: `codigo=${codigo}&cantidad=1`
+    })
+    .then(() => {
+        location.reload();
+    });
+
+}
+</script>
 
 <!-- ===================== PROMOS ===================== -->
 <h3>🎁 Promos disponibles</h3>
@@ -183,5 +278,22 @@ window.onload = calcularTotal;
 {% else %}
 <p>⚠️ No hay promos activas</p>
 {% endif %}
+<div id="modalBuscador" class="modal">
+    <div class="modal-box" style="max-width:600px;">
+
+        <h2>🔎 Buscar producto</h2>
+
+        <input type="text" id="busqueda"
+               placeholder="Escribí nombre del producto..."
+               style="width:100%;padding:12px;margin-top:10px;">
+
+        <div id="resultados" style="margin-top:15px;max-height:300px;overflow:auto;"></div>
+
+        <button onclick="cerrarBuscador()" class="btn-cancelar" style="margin-top:10px;">
+            Cerrar
+        </button>
+
+    </div>
+</div>
 
 {% endblock %}
