@@ -9,6 +9,7 @@ import json
 import sqlite3
 import uuid
 from datetime import datetime
+from flask import jsonify
 print("🔥🔥🔥 ESTE ES EL ARCHIVO CORRECTO 🔥🔥🔥")
 
 app = Flask(__name__)
@@ -220,10 +221,16 @@ def ejecutar(cur, conn, query, params=None):
     if isinstance(conn, sqlite3.Connection):
         query = query.replace("%s", "?")
 
-    if params is None:
-        cur.execute(query)
-    else:
-        cur.execute(query, params)
+    try:
+        if params is None:
+            cur.execute(query)
+        else:
+            cur.execute(query, tuple(params))  # 🔥 SIEMPRE TUPLA
+    except Exception as e:
+        print("❌ ERROR SQL:", e)
+        print("QUERY:", query)
+        print("PARAMS:", params)
+        raise
 def save_offline(tabla, accion, data):
     con = get_db_local()
     cur = con.cursor()
@@ -390,6 +397,7 @@ def sync_venta_to_cloud(venta_id, fecha, total, recargo, descuento, total_final,
             item_fixed["venta_id"] = venta_id
 
             save_offline("venta_items", "insert", item_fixed)
+            
 # ================== INDEX ==================
 @app.route("/")
 def index():
@@ -404,6 +412,31 @@ def debug():
 
     con.close()
     return str(data)
+@app.route("/buscar_productos")
+def buscar_productos():
+    q = request.args.get("q", "").upper()
+
+    con = get_db()
+    cur = con.cursor()
+
+    ejecutar(cur, con, """
+        SELECT codigo, descripcion, precio
+        FROM productos
+        WHERE UPPER(descripcion) LIKE %s
+        LIMIT 20
+    """, (f"%{q}%",))
+
+    data = [
+        {
+            "codigo": r[0],
+            "descripcion": r[1],
+            "precio": r[2]
+        }
+        for r in cur.fetchall()
+    ]
+
+    con.close()
+    return jsonify(data)
 
 # ================== LOGIN ADMIN ==================
 @app.route("/login", methods=["GET", "POST"])
