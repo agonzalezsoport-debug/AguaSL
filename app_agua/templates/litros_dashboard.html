@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Dashboard de Litros</title>
+
+<style>
+body {
+    font-family: Arial;
+    background: #f4f6f9;
+    padding: 20px;
+}
+
+h1 {
+    margin-bottom: 20px;
+}
+
+/* CARDS */
+.cards {
+    display: flex;
+    gap: 20px;
+    margin-bottom: 30px;
+}
+
+.card {
+    flex: 1;
+    background: white;
+    padding: 20px;
+    border-radius: 15px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+    text-align: center;
+}
+
+.card h2 {
+    margin: 0;
+    font-size: 18px;
+}
+
+.card p {
+    font-size: 28px;
+    margin: 10px 0 0;
+}
+
+/* COLORES */
+.verde { color: green; }
+.azul { color: #0077b6; }
+.rojo { color: red; }
+
+/* FORM */
+.form-box {
+    background: white;
+    padding: 20px;
+    border-radius: 15px;
+    margin-bottom: 30px;
+}
+
+input {
+    padding: 10px;
+    width: 200px;
+    border-radius: 8px;
+    border: 1px solid #ccc;
+}
+
+button {
+    padding: 10px 15px;
+    border: none;
+    background: #0077b6;
+    color: white;
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+/* TABLA */
+table {
+    width: 100%;
+    background: white;
+    border-radius: 10px;
+    overflow: hidden;
+    border-collapse: collapse;
+}
+
+th, td {
+    padding: 10px;
+    border-bottom: 1px solid #ddd;
+    text-align: center;
+}
+
+th {
+    background: #0077b6;
+    color: white;
+}
+
+/* ALERTA */
+.alerta {
+    padding: 10px;
+    margin-bottom: 15px;
+    border-radius: 10px;
+    font-weight: bold;
+}
+
+.alerta-ok { background: #d4edda; color: green; }
+.alerta-error { background: #f8d7da; color: red; }
+
+</style>
+</head>
+<body>
+
+<h1>📊 Dashboard de Litros</h1>
+
+<!-- ALERTA -->
+{% if diferencia < 0 %}
+<div class="alerta alerta-error">
+⚠️ Faltan litros (posible pérdida)
+</div>
+{% else %}
+<div class="alerta alerta-ok">
+✅ Todo correcto
+</div>
+{% endif %}
+
+<!-- CARDS -->
+<div class="cards">
+
+    <div class="card">
+        <h2>🟢 Vendidos</h2>
+        <p class="verde">{{ vendidos }} L</p>
+    </div>
+
+    <div class="card">
+        <h2>🔵 Cargados</h2>
+        <p class="azul">{{ cargados }} L</p>
+    </div>
+
+    <div class="card">
+        <h2>⚖️ Diferencia</h2>
+        <p class="{{ 'rojo' if diferencia < 0 else 'verde' }}">
+            {{ diferencia }} L
+        </p>
+    </div>
+
+</div>
+
+<!-- FORMULARIO -->
+<div class="form-box">
+    <form method="POST" action="/litros/agregar">
+        <input type="number" step="0.01" name="litros" placeholder="Ingresar litros" required>
+        <button type="submit">➕ Agregar</button>
+    </form>
+</div>
+
+<!-- HISTORIAL -->
+<h2>📜 Historial</h2>
+
+<table>
+    <tr>
+        <th>Litros</th>
+        <th>Fecha</th>
+    </tr>
+
+    {% for l in historial %}
+    <tr>
+        <td>{{ l[0] }}</td>
+        <td>{{ l[1] }}</td>
+    </tr>
+    {% endfor %}
+</table>
+
+<!-- GRÁFICO -->
+<h2 style="margin-top:30px;">📈 Evolución</h2>
+
+<canvas id="grafico" height="100"></canvas>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+const datos = {{ historial_json | tojson | safe }};
+
+const labels = datos.map(x => x.fecha);
+const valores = datos.map(x => x.litros);
+
+new Chart(document.getElementById("grafico"), {
+    type: 'line',
+    data: {
+        labels: labels,
+        datasets: [{
+            label: 'Litros cargados',
+            data: valores,
+            fill: false,
+            tension: 0.3
+        }]
+    }
+});
+</script>
+
+</body>
+</html>
