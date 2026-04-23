@@ -1,3 +1,4 @@
+
 from flask import Flask, render_template, request, redirect, session, flash
 import os
 from datetime import datetime
@@ -53,6 +54,7 @@ def sync_worker():
 
             cur.execute("SELECT * FROM sync_queue WHERE sync=0 LIMIT 50")
             rows = cur.fetchall()
+            con.close()  # 🔥 liberar rápido
 
             for row in rows:
                 con_cloud = None
@@ -143,6 +145,15 @@ def sync_worker():
                         """, (data["id"],))
 
                         if cur_cloud.fetchone():
+                            # marcar igual como sync
+                            con2 = get_db_local()
+                            cur2 = con2.cursor()
+
+                            cur2.execute("UPDATE sync_queue SET sync=1 WHERE id=?", (id_,))
+
+                            con2.commit()
+                            con2.close()
+
                             continue
 
                         cur_cloud.execute("""
@@ -177,9 +188,14 @@ def sync_worker():
                     con_cloud.commit()
 
                     # marcar sync OK
-                    cur.execute("UPDATE sync_queue SET sync=1 WHERE id=?", (id_,))
-                    con.commit()
+                    # ✅ NUEVA CONEXIÓN SOLO PARA UPDATE
+                    con2 = get_db_local()
+                    cur2 = con2.cursor()
 
+                    cur2.execute("UPDATE sync_queue SET sync=1 WHERE id=?", (id_,))
+
+                    con2.commit()
+                    con2.close()
                     print(f"✅ OK: {tabla}")
 
                 except Exception as e:
@@ -402,6 +418,95 @@ def sync_venta_to_cloud(venta_id, fecha, total, recargo, descuento, total_final,
 @app.route("/")
 def index():
     return render_template("index.html")
+@app.route("/clientes/agregar", methods=["POST"])
+def agregar_cliente():
+    if not session.get("admin"):
+        return redirect("/login")
+
+    import uuid
+
+    nombre = request.form.get("nombre")
+    telefono = request.form.get("telefono")
+    direccion = request.form.get("direccion")
+
+    # 🔥 SOLUCIÓN AL ERROR
+    password = str(uuid.uuid4())[:8]
+
+    if not nombre:
+        return "❌ Nombre obligatorio"
+
+    con = get_db()
+    cur = con.cursor()
+
+    try:
+        ejecutar(cur, con, """
+            INSERT INTO usuarios(nombre, telefono, direccion, password)
+            VALUES (%s, %s, %s, %s)
+        """, (nombre, telefono, direccion, password))
+
+        con.commit()
+
+    except Exception as e:
+        con.close()
+        return f"❌ Error: {e}"
+
+    con.close()
+
+    # 🔁 volver a la lista
+    return redirect("/clientes")
+@app.route("/clientes/eliminar/<int:id>", methods=["POST"])
+def eliminar_cliente(id):
+    if not session.get("admin"):
+        return redirect("/login")
+
+    con = get_db()
+    cur = con.cursor()
+
+    try:
+        ejecutar(cur, con, "DELETE FROM usuarios WHERE id=%s", (id,))
+        con.commit()
+
+    except Exception as e:
+        con.close()
+        return f"❌ Error al eliminar: {e}"
+
+    con.close()
+    return redirect("/clientes")
+@app.route("/clientes/editar/<int:id>", methods=["GET", "POST"])
+def editar_cliente(id):
+    if not session.get("admin"):
+        return redirect("/login")
+
+    con = get_db()
+    cur = con.cursor()
+
+    if request.method == "POST":
+        nombre = request.form.get("nombre")
+        telefono = request.form.get("telefono")
+        direccion = request.form.get("direccion")
+
+        try:
+            ejecutar(cur, con, """
+                UPDATE usuarios
+                SET nombre=%s, telefono=%s, direccion=%s
+                WHERE id=%s
+            """, (nombre, telefono, direccion, id))
+
+            con.commit()
+
+        except Exception as e:
+            con.close()
+            return f"❌ Error: {e}"
+
+        con.close()
+        return redirect("/clientes")
+
+    # GET → cargar datos
+    ejecutar(cur, con, "SELECT * FROM usuarios WHERE id=%s", (id,))
+    cliente = cur.fetchone()
+    con.close()
+
+    return render_template("editar_cliente.html", cliente=cliente)
 @app.route("/debug")
 def debug():
     con = get_db()
@@ -563,15 +668,56 @@ def clientes():
     if not session.get("admin"):
         return redirect("/login")
 
+    editar_id = request.args.get("editar")
+
     con = get_db()
     cur = con.cursor()
 
+    # Lista de clientes
     ejecutar(cur, con, "SELECT * FROM usuarios")
     data = cur.fetchall()
 
+    cliente_editar = None
+
+    # Si viene ?editar=ID
+    if editar_id:
+        ejecutar(cur, con, "SELECT * FROM usuarios WHERE id=%s", (editar_id,))
+        cliente_editar = cur.fetchone()
+
     con.close()
 
-    return render_template("clientes.html", clientes=data)
+    return render_template(
+        "clientes.html",
+        clientes=data,
+        cliente_editar=cliente_editar
+    )
+@app.route("/clientes/actualizar/<int:id>", methods=["POST"])
+def actualizar_cliente(id):
+    if not session.get("admin"):
+        return redirect("/login")
+
+    nombre = request.form.get("nombre")
+    telefono = request.form.get("telefono")
+    direccion = request.form.get("direccion")
+
+    con = get_db()
+    cur = con.cursor()
+
+    try:
+        ejecutar(cur, con, """
+            UPDATE usuarios
+            SET nombre=%s, telefono=%s, direccion=%s
+            WHERE id=%s
+        """, (nombre, telefono, direccion, id))
+
+        con.commit()
+
+    except Exception as e:
+        con.close()
+        return f"❌ Error: {e}"
+
+    con.close()
+    return redirect("/clientes")
 # ================== PROMOS ==================
 @app.route("/promos")
 def promos():
@@ -1568,6 +1714,19 @@ def carrito_confirmar():
         precio = float(item["precio"])
         subtotal_item = precio * cantidad
 
+        # 🔥 OBTENER LITROS DEL PRODUCTO
+        ejecutar(cur, con, "SELECT litros FROM productos WHERE id = %s", (item["id"],))
+        row = cur.fetchone()
+
+        if row:
+            litros_unitario = row[0] if not isinstance(row, sqlite3.Row) else row["litros"]
+        else:
+            litros_unitario = 0
+
+        # 🔥 CALCULAR LITROS
+        litros_total = litros_unitario * cantidad
+
+        # ✅ INSERT CORREGIDO
         ejecutar(cur, con, """
             INSERT INTO venta_items (id, venta_id, producto_id, cantidad, litros_total, subtotal)
             VALUES (%s, %s, %s, %s, %s, %s)
@@ -1576,44 +1735,46 @@ def carrito_confirmar():
             venta_id,
             item["id"],
             cantidad,
-            0,
+            litros_total,   # ✅ CORRECTO
             subtotal_item
         ))
 
+        # ✅ ACTUALIZAR STOCK
         ejecutar(cur, con, """
             UPDATE productos
             SET stock = stock - %s
             WHERE id = %s
         """, (cantidad, item["id"]))
 
+        # ✅ AGREGAR A CLOUD (ANTES ESTABA MAL)
         items_cloud.append({
             "id": item_id,
             "producto_id": item["id"],
             "cantidad": cantidad,
-            "litros_total": 0,
+            "litros_total": litros_total,   # 🔥 FIX CLAVE
             "subtotal": subtotal_item
         })
+        # ✅ GUARDAR EN BASE LOCAL PRIMERO
+        con.commit()
+        con.close()
 
-    con.commit()
-    con.close()
+        # ================= SYNC =================
+        sync_venta_to_cloud(
+            venta_id,
+            fecha,
+            subtotal,
+            recargo_valor,
+            descuento_valor,
+            total_final,
+            metodo_pago,
+            cajero_nombre,
+            items_cloud
+        )
 
-    # ================= SYNC =================
-    sync_venta_to_cloud(
-        venta_id,
-        fecha,
-        subtotal,
-        recargo_valor,
-        descuento_valor,
-        total_final,
-        metodo_pago,
-        cajero_nombre,
-        items_cloud
-    )
+        # 🧹 limpiar carrito
+        session["carrito"] = []
 
-    # 🧹 limpiar carrito
-    session["carrito"] = []
-
-    return redirect("/ventas_ui")
+        return redirect("/ventas_ui")
 @app.route("/login_cajero", methods=["GET", "POST"])
 def login_cajero():
     if request.method == "POST":
