@@ -85,7 +85,7 @@ def sync_worker():
                             data["precio"],
                             data["stock"],
                             data["fecha"],
-                            data.get("departamento")  # 🔥 IMPORTANTE
+                            data.get("departamento")
                         ))
 
                     # ================= PROMOS =================
@@ -118,7 +118,9 @@ def sync_worker():
                     # ================= VENTAS =================
                     elif tabla == "ventas":
                         cur_cloud.execute("""
-                            INSERT INTO ventas(id, fecha, total,recargo, descuento, total_final, metodo_pago, cajero)
+                            INSERT INTO ventas(
+                                id, fecha, total, recargo, descuento, total_final, metodo_pago, cajero
+                            )
                             VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
                             ON CONFLICT (id) DO NOTHING
                         """, (
@@ -146,7 +148,7 @@ def sync_worker():
                         """, (data["id"],))
 
                         if cur_cloud.fetchone():
-                            # marcar igual como sync
+                            # marcar como sync igual
                             con2 = get_db_local()
                             cur2 = con2.cursor()
 
@@ -154,7 +156,6 @@ def sync_worker():
 
                             con2.commit()
                             con2.close()
-
                             continue
 
                         cur_cloud.execute("""
@@ -180,16 +181,25 @@ def sync_worker():
                             data["producto_id"]
                         ))
 
-                        
+                    # ================= LITROS CONTROL =================
+                    elif tabla == "litros_control":
+                        cur_cloud.execute("""
+                            INSERT INTO litros_control (litros, fecha)
+                            VALUES (%s, %s)
+                        """, (
+                            data["litros"],
+                            data["fecha"]
+                        ))
 
+                    # ================= DEFAULT =================
                     else:
                         print(f"⚠️ tabla no manejada: {tabla}")
                         continue
 
+                    # ✅ COMMIT CLOUD
                     con_cloud.commit()
 
-                    # marcar sync OK
-                    # ✅ NUEVA CONEXIÓN SOLO PARA UPDATE
+                    # ✅ MARCAR COMO SINCRONIZADO
                     con2 = get_db_local()
                     cur2 = con2.cursor()
 
@@ -197,6 +207,7 @@ def sync_worker():
 
                     con2.commit()
                     con2.close()
+
                     print(f"✅ OK: {tabla}")
 
                 except Exception as e:
@@ -211,8 +222,6 @@ def sync_worker():
                 finally:
                     if con_cloud:
                         con_cloud.close()
-
-            con.close()
 
         except Exception as e:
             print("🔥 ERROR GLOBAL SYNC:", e)
@@ -1248,7 +1257,71 @@ def ventas():
 
     return render_template("ventas.html", productos=productos)
 
+@app.route("/litros")
+def ver_litros():
 
+    con = get_db()   # 🔥 IMPORTANTE
+    cur = con.cursor()
+
+    # 📜 HISTORIAL
+    cur.execute("SELECT litros, fecha FROM litros_control ORDER BY fecha ASC")
+    historial = cur.fetchall()
+
+    # 🔵 CARGADOS
+    cargados = sum(float(row[0]) for row in historial)
+
+    # 🟢 VENDIDOS (AHORA SÍ VA A FUNCIONAR)
+    cur.execute("""
+        SELECT COALESCE(SUM(litros_total), 0)
+        FROM venta_items
+    """)
+    vendidos = cur.fetchone()[0]
+
+    # ⚖️ DIFERENCIA
+    diferencia = cargados - vendidos
+
+    con.close()
+
+    historial_json = [
+        {"litros": float(row[0]), "fecha": row[1]}
+        for row in historial
+    ]
+
+    return render_template(
+        "litros_dashboard.html",
+        historial=historial,
+        historial_json=historial_json,
+        vendidos=vendidos,
+        cargados=cargados,
+        diferencia=diferencia
+    )
+@app.route("/litros/agregar", methods=["POST"])
+def agregar_litros():
+    litros = request.form.get("litros")
+
+    if not litros:
+        return redirect("/litros")
+
+    fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    con = sqlite3.connect(DB_PATH)
+    cur = con.cursor()
+
+    cur.execute("""
+        INSERT INTO litros_control (litros, fecha)
+        VALUES (?, ?)
+    """, (float(litros), fecha))
+
+    con.commit()
+    con.close()
+
+    # 🔥 GUARDAR EN COLA PARA SYNC
+    save_offline("litros_control", "insert", {
+        "litros": float(litros),
+        "fecha": fecha
+    })
+
+    return redirect("/litros")
 @app.route("/carrito/agregar", methods=["POST"])
 def carrito_agregar():
     if "carrito" not in session:
