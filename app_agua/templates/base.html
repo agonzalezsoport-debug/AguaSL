@@ -43,14 +43,11 @@
 <div id="sidebar" class="sidebar">
 
     <div class="sidebar-header">
-           💧 Agua San Luis
+        💧 Agua San Luis
         <span id="closeSidebar" class="close-btn">✕</span>
     </div>
 
-    <div class="menu-group">
-        <a href="/" class="nav-link">🏠 Inicio</a>
-    </div>
-
+    <!-- 🔥 IMPORTANTE -->
     {% set admin = session.get("admin") %}
     {% set cajero = session.get("cajero_id") %}
     {% set cliente = session.get("cliente_id") %}
@@ -66,6 +63,10 @@
         <a href="/productos/agregar" class="nav-link">📦 Productos</a>
         <a href="/stock" class="nav-link">📦 Stock</a>
         <a href="/reporte_ventas" class="nav-link">📊 Reportes</a>
+
+        <!-- 💧 NUEVO -->
+        <a href="/litros" class="nav-link">💧 Litros</a>
+
         <a href="/cajeros" class="nav-link">👨‍💼 Cajeros</a>
         <a href="/crear_cajero" class="nav-link">➕ Crear Cajero</a>
     {% endif %}
@@ -88,6 +89,10 @@
         {% if session.get("puede_ver_reportes") %}
             <a href="/reporte_ventas" class="nav-link">📊 Reportes</a>
         {% endif %}
+
+        <!-- 💧 NUEVO -->
+        <a href="/litros" class="nav-link">💧 Litros</a>
+
     {% endif %}
 
     {% if cliente %}
@@ -99,7 +104,7 @@
     <a href="/logout" class="nav-link logout">🚪 Salir</a>
 
 </div>
-
+    
 <!-- ================= BOTÓN MENU ================= -->
 <button id="openSidebar" class="menu-btn">☰</button>
 
