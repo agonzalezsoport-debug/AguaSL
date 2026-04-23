@@ -91,10 +91,11 @@ def sync_worker():
                     # ================= PROMOS =================
                     elif tabla == "promos":
                         cur_cloud.execute("""
-                            INSERT INTO promos(nombre, descripcion, precio, activa)
-                            VALUES (%s,%s,%s,%s)
-                            ON CONFLICT DO NOTHING
+                            INSERT INTO promos(id, nombre, descripcion, precio, activa)
+                            VALUES (%s,%s,%s,%s,%s)
+                            ON CONFLICT (id) DO NOTHING
                         """, (
+                            data["id"],
                             data["nombre"],
                             data["descripcion"],
                             data["precio"],
@@ -309,30 +310,6 @@ def sync_producto_to_cloud(id, codigo, descripcion, litros, precio, stock, fecha
             "stock": stock,
             "fecha": fecha,
             "departamento": departamento   # 🔥 IMPORTANTE
-        })
-def sync_promo_to_cloud(nombre, descripcion, precio):
-    try:
-        con = get_db_cloud()
-        cur = con.cursor()
-
-        ejecutar(cur, con, """
-            INSERT INTO promos(nombre, descripcion, precio, activa)
-            VALUES (%s, %s, %s, 1)
-        """, (nombre, descripcion, precio))
-
-        con.commit()
-        con.close()
-
-        print("✅ Promo sincronizada")
-
-    except Exception as e:
-        print("⚠️ Error sync promo:", e)
-
-        save_offline("promos", "insert", {
-            "nombre": nombre,
-            "descripcion": descripcion,
-            "precio": precio,
-            "activa": 1
         })
 
 def sync_venta_to_cloud(venta_id, fecha, total, recargo, descuento, total_final, metodo_pago, cajero, items):
@@ -849,8 +826,11 @@ def reporte_ventas_cajero():
 @app.route("/promos/agregar", methods=["POST"])
 def agregar_promo():
     if not session.get("admin") and not session.get("puede_agregar_productos"):
-        return "❌ No tenés permiso para agregar productos"
+        return "❌ No tenés permiso"
 
+    import uuid
+
+    promo_id = str(uuid.uuid4())
     nombre = request.form.get("nombre")
     descripcion = request.form.get("descripcion")
     precio = request.form.get("precio")
@@ -859,21 +839,28 @@ def agregar_promo():
     cur = con.cursor()
 
     try:
+        # 🔥 SOLO LOCAL
         ejecutar(cur, con, """
-            INSERT INTO promos(nombre, descripcion, precio, activa)
-            VALUES (%s, %s, %s, 1)
-        """, (nombre, descripcion, precio))
+            INSERT INTO promos(id, nombre, descripcion, precio, activa)
+            VALUES (%s, %s, %s, %s, 1)
+        """, (promo_id, nombre, descripcion, precio))
 
         con.commit()
 
+        # 🔥 SOLO COLA (NO DIRECTO)
+        save_offline("promos", "insert", {
+            "id": promo_id,
+            "nombre": nombre,
+            "descripcion": descripcion,
+            "precio": precio,
+            "activa": 1
+        })
+
     except Exception as e:
         con.close()
-        return f"❌ Error al guardar promo: {e}"
+        return f"❌ Error: {e}"
 
     con.close()
-
-    # 🔁 SINCRONIZAR A SUPABASE
-    sync_promo_to_cloud(nombre, descripcion, precio)
 
     return redirect("/promos")
 @app.route("/productos/agregar", methods=["GET", "POST"])
@@ -1664,69 +1651,21 @@ def carrito_confirmar():
     items_cloud = []
 
     # ================= ITEMS =================
+    items_cloud = []
+
     for item in carrito:
-
-        cantidad_carrito = int(item["cantidad"])
-
-        # ================= PROMOS =================
-        if str(item["id"]).startswith("promo_"):
-
-            promo_id = item["id"].replace("promo_", "")
-
-            ejecutar(cur, con, """
-                SELECT producto_id, cantidad
-                FROM promo_items
-                WHERE promo_id=%s
-            """, (promo_id,))
-
-            productos_promo = cur.fetchall()
-
-            for prod in productos_promo:
-                producto_id = prod[0]
-                cantidad_real = prod[1] * cantidad_carrito
-
-                ejecutar(cur, con, """
-                    UPDATE productos
-                    SET stock = stock - %s
-                    WHERE id = %s
-                """, (cantidad_real, producto_id))
-
-                ejecutar(cur, con, """
-                    INSERT INTO venta_items (
-                        id, venta_id, producto_id, cantidad, litros_total, subtotal
-                    )
-                    VALUES (%s, %s, %s, %s, %s, %s)
-                """, (
-                    str(uuid.uuid4()),
-                    venta_id,
-                    producto_id,
-                    cantidad_real,
-                    0,
-                    0
-                ))
-
-            continue
-
-        # ================= PRODUCTOS NORMALES =================
-        item_id = str(uuid.uuid4())
-
         cantidad = int(item["cantidad"])
         precio = float(item["precio"])
         subtotal_item = precio * cantidad
 
-        # 🔥 OBTENER LITROS DEL PRODUCTO
         ejecutar(cur, con, "SELECT litros FROM productos WHERE id = %s", (item["id"],))
         row = cur.fetchone()
 
-        if row:
-            litros_unitario = row[0] if not isinstance(row, sqlite3.Row) else row["litros"]
-        else:
-            litros_unitario = 0
-
-        # 🔥 CALCULAR LITROS
+        litros_unitario = row[0] if row else 0
         litros_total = litros_unitario * cantidad
 
-        # ✅ INSERT CORREGIDO
+        item_id = str(uuid.uuid4())
+
         ejecutar(cur, con, """
             INSERT INTO venta_items (id, venta_id, producto_id, cantidad, litros_total, subtotal)
             VALUES (%s, %s, %s, %s, %s, %s)
@@ -1735,46 +1674,43 @@ def carrito_confirmar():
             venta_id,
             item["id"],
             cantidad,
-            litros_total,   # ✅ CORRECTO
+            litros_total,
             subtotal_item
         ))
 
-        # ✅ ACTUALIZAR STOCK
         ejecutar(cur, con, """
             UPDATE productos
             SET stock = stock - %s
             WHERE id = %s
         """, (cantidad, item["id"]))
 
-        # ✅ AGREGAR A CLOUD (ANTES ESTABA MAL)
         items_cloud.append({
             "id": item_id,
             "producto_id": item["id"],
             "cantidad": cantidad,
-            "litros_total": litros_total,   # 🔥 FIX CLAVE
+            "litros_total": litros_total,
             "subtotal": subtotal_item
         })
-        # ✅ GUARDAR EN BASE LOCAL PRIMERO
-        con.commit()
-        con.close()
 
-        # ================= SYNC =================
-        sync_venta_to_cloud(
-            venta_id,
-            fecha,
-            subtotal,
-            recargo_valor,
-            descuento_valor,
-            total_final,
-            metodo_pago,
-            cajero_nombre,
-            items_cloud
-        )
+    # ✅ AHORA SÍ: FUERA DEL FOR
+    con.commit()
+    con.close()
 
-        # 🧹 limpiar carrito
-        session["carrito"] = []
+    sync_venta_to_cloud(
+        venta_id,
+        fecha,
+        subtotal,
+        recargo_valor,
+        descuento_valor,
+        total_final,
+        metodo_pago,
+        cajero_nombre,
+        items_cloud
+    )
 
-        return redirect("/ventas_ui")
+    session["carrito"] = []
+
+    return redirect("/ventas_ui")
 @app.route("/login_cajero", methods=["GET", "POST"])
 def login_cajero():
     if request.method == "POST":
