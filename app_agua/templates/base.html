@@ -2,34 +2,31 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>DISTRIBUCION DE AGUA SAN LUIS</title>
+    <title>   RINPA SAN LUIS </title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="/static/style.css">
 </head>
-
 
 <body>
 
 <!-- ================= HEADER ================= -->
 <header class="header-pro">
     <div class="header-content">
-        <div class="logo">💧</div>
+        <div class="logo"> 💧</div>
 
         <div class="titles">
-            <h1>Distribución de agua SAN LUIS</h1>
-            <span class="subtitle">Distribución de agua</span>
+            <h1>  RINPA SAN LUIS </h1>
+            <span class="subtitle">Sistema de gestión</span>
         </div>
     </div>
 
-    <div>
+    <div class="role-badge">
         {% if session.get("admin") %}
-            <span class="badge">Admin</span>
-
+            <span class="badge admin">Admin</span>
         {% elif session.get("cajero_id") %}
-            <span class="badge">Cajero</span>
-
+            <span class="badge cajero">Cajero</span>
         {% elif session.get("cliente_id") %}
-            <span class="badge">Cliente</span>
+            <span class="badge cliente">Cliente</span>
         {% endif %}
     </div>
 </header>
@@ -39,132 +36,107 @@
     {% block content %}{% endblock %}
 </div>
 
-<!-- ================= NAV SOLO CON LOGIN ================= -->
-{% if session.get("admin") or session.get("cajero_id") or session.get("cliente_id") %}
+<!-- ================= OVERLAY ================= -->
+<div id="overlay" class="overlay"></div>
 
-<div class="nav">
+<!-- ================= SIDEBAR ================= -->
+<div id="sidebar" class="sidebar">
 
-    <a href="/">🏠Inicio</a>
+    <div class="sidebar-header">
+           💧 Agua San Luis
+        <span id="closeSidebar" class="close-btn">✕</span>
+    </div>
 
-    <!-- ================= ADMIN ================= -->
-    {% if session.get("admin") %}
+    <div class="menu-group">
+        <a href="/" class="nav-link">🏠 Inicio</a>
+    </div>
 
-        <a href="/dashboard">📊Panel</a>
-        <a href="/clientes">👥 Agregar Clientes</a>
-        <a href="/promos">🎁Promos</a>
-        <a href="/pedidos">📋Pedidos</a>
-        <a href="/ventas_ui">💰Ventas</a>
-        <a href="/productos/agregar">📦Agregar Productos</a>
-        <a href="/stock">📦Stock</a>
-        <a href="/reporte_ventas">📁Reporte Inventario</a>
-        <a href="/cajeros">👨‍💼Administracion de Cajeros</a>
-        <a href="/crear_cajero">📦 Crear Cajero</a>
-        <a href="#" class="btn-salir">Salir</a>
+    {% set admin = session.get("admin") %}
+    {% set cajero = session.get("cajero_id") %}
+    {% set cliente = session.get("cliente_id") %}
 
-    <!-- ================= CAJERO ================= -->
-    {% elif session.get("cajero_id") %}
+    <div class="menu-group">
 
-        <a href="/dashboard_cajero">💼Panel</a>
+    {% if admin %}
+        <a href="/dashboard" class="nav-link">📊 Panel</a>
+        <a href="/clientes" class="nav-link">👥 Clientes</a>
+        <a href="/promos" class="nav-link">🎁 Promos</a>
+        <a href="/pedidos" class="nav-link">📦 Pedidos</a>
+        <a href="/ventas_ui" class="nav-link">💰 Ventas</a>
+        <a href="/productos/agregar" class="nav-link">📦 Productos</a>
+        <a href="/stock" class="nav-link">📦 Stock</a>
+        <a href="/reporte_ventas" class="nav-link">📊 Reportes</a>
+        <a href="/cajeros" class="nav-link">👨‍💼 Cajeros</a>
+        <a href="/crear_cajero" class="nav-link">➕ Crear Cajero</a>
+    {% endif %}
+
+    {% if cajero %}
+        <a href="/dashboard_cajero" class="nav-link">💼 Panel</a>
 
         {% if session.get("puede_vender") %}
-            <a href="/ventas_ui">💰Ventas</a>
-        {% else %}
-            <span class="disabled">💰Ventas</span>
+            <a href="/ventas_ui" class="nav-link">💰 Ventas</a>
         {% endif %}
 
         {% if session.get("puede_ver_pedidos") %}
-            <a href="/pedidos">📦Pedidos</a>
-        {% else %}
-            <span class="disabled">📦Pedidos</span>
+            <a href="/pedidos" class="nav-link">📦 Pedidos</a>
         {% endif %}
 
         {% if session.get("puede_ver_stock") %}
-            <a href="/stock">📦Stock</a>
-        {% else %}
-            <span class="disabled">📦Stock</span>
+            <a href="/stock" class="nav-link">📦 Stock</a>
         {% endif %}
 
         {% if session.get("puede_ver_reportes") %}
-            <a href="/reporte_ventas">📊Reportes</a>
-        {% else %}
-            <span class="disabled">📊Reportes</span>
+            <a href="/reporte_ventas" class="nav-link">📊 Reportes</a>
         {% endif %}
-        {% if session.get("puede_agregar_productos") %}
-            <a href="/productos/agregar">📦Productos</a>
-        {% else %}
-            <span class="disabled">📦Productos</span>
-        {% endif %}
-
-        <a href="#" class="btn-salir">Salir</a>
-
-    <!-- ================= CLIENTE ================= -->
-    {% elif session.get("cliente_id") %}
-
-        <a href="/mis_pedidos">📦Ver Pedidos</a>
-        <a href="#" class="btn-salir">Salir</a>
-
     {% endif %}
 
-</div>
+    {% if cliente %}
+        <a href="/mis_pedidos" class="nav-link">📦 Mis pedidos</a>
+    {% endif %}
 
-{% endif %}
-
-<!-- ================= SCRIPT ACTIVE LINK ================= -->
-<script>
-const links = document.querySelectorAll(".nav a");
-links.forEach(link => {
-    if (link.href === window.location.href) {
-        link.classList.add("active");
-    }
-});
-</script>
-<script>
-
-</script>
-<script>
-
-</script>
-<div id="modalSalir" class="modal">
-    <div class="modal-box">
-        <h2>¿Cerrar sesión?</h2>
-        <p>Se cerrará la sesión y se perderán los datos no guardados.</p>
-
-        <div class="modal-actions">
-            <button class="btn-cancelar">Cancelar</button>
-            <button class="btn-confirmar">Sí, salir</button>
-        </div>
     </div>
+
+    <a href="/logout" class="nav-link logout">🚪 Salir</a>
+
 </div>
+
+<!-- ================= BOTÓN MENU ================= -->
+<button id="openSidebar" class="menu-btn">☰</button>
+
+<!-- ================= SCRIPT ================= -->
 <script>
 document.addEventListener("DOMContentLoaded", function () {
 
-    const modal = document.getElementById("modalSalir");
-    const btnCancelar = document.querySelector(".btn-cancelar");
-    const btnConfirmar = document.querySelector(".btn-confirmar");
+    const sidebar = document.getElementById("sidebar");
+    const overlay = document.getElementById("overlay");
+    const openBtn = document.getElementById("openSidebar");
+    const closeBtn = document.getElementById("closeSidebar");
 
-    // 👉 ABRIR MODAL
-    document.querySelectorAll(".btn-salir").forEach(btn => {
-        btn.addEventListener("click", function (e) {
-            e.preventDefault();
-            modal.style.display = "flex";
-        });
+    function openMenu() {
+        sidebar.classList.add("active");
+        overlay.classList.add("active");
+    }
+
+    function closeMenu() {
+        sidebar.classList.remove("active");
+        overlay.classList.remove("active");
+    }
+
+    openBtn.addEventListener("click", openMenu);
+    closeBtn.addEventListener("click", closeMenu);
+    overlay.addEventListener("click", closeMenu);
+
+    document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") closeMenu();
     });
 
-    // 👉 CANCELAR
-    btnCancelar.addEventListener("click", function () {
-        modal.style.display = "none";
-    });
-
-    // 👉 CONFIRMAR SALIDA
-    btnConfirmar.addEventListener("click", function () {
-        window.location.href = "/logout";
-    });
-
-    // 👉 CERRAR HACIENDO CLICK AFUERA
-    window.addEventListener("click", function (e) {
-        if (e.target === modal) {
-            modal.style.display = "none";
-        }
+    // ACTIVE LINK
+    document.querySelectorAll(".nav-link").forEach(link => {
+        try {
+            if (link.pathname === window.location.pathname) {
+                link.classList.add("active");
+            }
+        } catch (e) {}
     });
 
 });
