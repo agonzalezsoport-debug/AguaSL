@@ -834,41 +834,25 @@ def reporte_ventas_cajero():
     )
 @app.route("/promos/agregar", methods=["POST"])
 def agregar_promo():
-    if not session.get("admin") and not session.get("puede_agregar_productos"):
-        return "❌ No tenés permiso"
+    if not session.get("admin"):
+        return "❌ Sin permiso"
 
     import uuid
 
     promo_id = str(uuid.uuid4())
     nombre = request.form.get("nombre")
     descripcion = request.form.get("descripcion")
-    precio = request.form.get("precio")
+    precio = float(request.form.get("precio") or 0)
 
     con = get_db()
     cur = con.cursor()
 
-    try:
-        # 🔥 SOLO LOCAL
-        ejecutar(cur, con, """
-            INSERT INTO promos(id, nombre, descripcion, precio, activa)
-            VALUES (%s, %s, %s, %s, 1)
-        """, (promo_id, nombre, descripcion, precio))
+    ejecutar(cur, con, """
+        INSERT INTO promos(id, nombre, descripcion, precio, activa)
+        VALUES (%s, %s, %s, %s, 1)
+    """, (promo_id, nombre, descripcion, precio))
 
-        con.commit()
-
-        # 🔥 SOLO COLA (NO DIRECTO)
-        save_offline("promos", "insert", {
-            "id": promo_id,
-            "nombre": nombre,
-            "descripcion": descripcion,
-            "precio": precio,
-            "activa": 1
-        })
-
-    except Exception as e:
-        con.close()
-        return f"❌ Error: {e}"
-
+    con.commit()
     con.close()
 
     return redirect("/promos")
@@ -1880,6 +1864,53 @@ def cajeros():
     con.close()
 
     return render_template("cajeros.html", cajeros=data)
+@app.route("/stock/vaciar/<id>")
+def vaciar_stock(id):
+    if not session.get("admin") and not session.get("puede_agregar_productos"):
+        return "❌ Sin permiso"
+
+    con = get_db()
+    cur = con.cursor()
+
+    try:
+        ejecutar(cur, con, """
+            UPDATE productos
+            SET stock = 0
+            WHERE id = %s
+        """, (id,))
+
+        con.commit()
+
+    except Exception as e:
+        con.close()
+        return f"❌ Error: {e}"
+
+    con.close()
+
+    return redirect("/stock")
+@app.route("/stock/eliminar/<id>")
+def eliminar_producto(id):
+    if not session.get("admin") and not session.get("puede_agregar_productos"):
+        return "❌ Sin permiso"
+
+    con = get_db()
+    cur = con.cursor()
+
+    try:
+        # ⚠️ OJO: esto borra producto completo
+        ejecutar(cur, con, """
+            DELETE FROM productos
+            WHERE id = %s
+        """, (id,))
+
+        con.commit()
+
+    except Exception as e:
+        con.close()
+        return f"❌ Error: {e}"
+
+    con.close()
+    return redirect("/stock")
 @app.route("/dashboard_cajero")
 def dashboard_cajero():
     if not session.get("cajero_id"):
@@ -1903,6 +1934,61 @@ def dashboard_cajero():
         pedidos=pedidos,
         nombre=session.get("nombre_cajero")
     )
+@app.route("/promos/eliminar/<id>", methods=["POST"])
+def eliminar_promo(id):
+    con = get_db()
+    cur = con.cursor()
+
+    ejecutar(cur, con, "DELETE FROM promos WHERE id=%s", (id,))
+
+    con.commit()
+    con.close()
+
+    return redirect("/promos")
+@app.route("/promos/editar/<int:id>", methods=["POST"])
+def actualizar_promo(id):
+    nombre = request.form["nombre"]
+    descripcion = request.form["descripcion"]
+    precio = request.form["precio"]
+
+    con = sqlite3.connect(DB_PATH)
+    cur = con.cursor()
+
+    cur.execute("""
+        UPDATE promos 
+        SET nombre=?, descripcion=?, precio=? 
+        WHERE id=?
+    """, (nombre, descripcion, precio, id))
+
+    con.commit()
+    con.close()
+
+    return redirect("/promos")
+@app.route("/promos/editar/<id>", methods=["GET", "POST"])
+def editar_promo(id):
+    con = get_db()
+    cur = con.cursor()
+
+    if request.method == "POST":
+        nombre = request.form.get("nombre")
+        descripcion = request.form.get("descripcion")
+        precio = float(request.form.get("precio") or 0)
+
+        ejecutar(cur, con, """
+            UPDATE promos
+            SET nombre=%s, descripcion=%s, precio=%s
+            WHERE id=%s
+        """, (nombre, descripcion, precio, id))
+
+        con.commit()
+        con.close()
+        return redirect("/promos")
+
+    ejecutar(cur, con, "SELECT * FROM promos WHERE id=%s", (id,))
+    promo = cur.fetchone()
+
+    con.close()
+    return render_template("editar_promo.html", promo=promo)
 @app.route("/stock", methods=["GET", "POST"])
 def stock():
     if not session.get("admin") and not session.get("puede_agregar_productos"):
