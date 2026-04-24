@@ -1656,8 +1656,7 @@ def carrito_confirmar():
     if not metodo_pago:
         return "❌ Selecciona método de pago"
 
-    
-   # ================= CAJERO =================
+    # ================= CAJERO =================
     if session.get("admin"):
         cajero_id = None
         cajero_nombre = "admin"
@@ -1665,7 +1664,6 @@ def carrito_confirmar():
         cajero_id = session.get("cajero_id")
         cajero_nombre = session.get("nombre_cajero")
 
-    # 🔥 validación solo para cajeros
     if not session.get("admin") and not cajero_nombre:
         return "❌ Error: sesión de cajero perdida"
 
@@ -1708,24 +1706,31 @@ def carrito_confirmar():
     items_cloud = []
 
     # ================= ITEMS =================
-    items_cloud = []
-
     for item in carrito:
+
+        es_manual = item["id"].startswith("manual_")
         cantidad = int(item["cantidad"])
         precio = float(item["precio"])
         subtotal_item = precio * cantidad
 
-        ejecutar(cur, con, "SELECT litros FROM productos WHERE id = %s", (item["id"],))
-        row = cur.fetchone()
+        # ================= LITROS =================
+        if not es_manual:
+            ejecutar(cur, con, "SELECT litros FROM productos WHERE id = %s", (item["id"],))
+            row = cur.fetchone()
+            litros_unitario = row[0] if row else 0
+        else:
+            litros_unitario = 0
 
-        litros_unitario = row[0] if row else 0
         litros_total = litros_unitario * cantidad
 
         item_id = str(uuid.uuid4())
 
+        # ================= INSERT ITEM =================
         ejecutar(cur, con, """
-            INSERT INTO venta_items (id, venta_id, producto_id, cantidad, litros_total, subtotal)
-            VALUES (%s, %s, %s, %s, %s, %s)
+            INSERT INTO venta_items (
+                id, venta_id, producto_id, cantidad, litros_total, subtotal
+            )
+            VALUES (%s,%s,%s,%s,%s,%s)
         """, (
             item_id,
             venta_id,
@@ -1735,12 +1740,15 @@ def carrito_confirmar():
             subtotal_item
         ))
 
-        ejecutar(cur, con, """
-            UPDATE productos
-            SET stock = stock - %s
-            WHERE id = %s
-        """, (cantidad, item["id"]))
+        # ================= STOCK SOLO PRODUCTOS =================
+        if not es_manual:
+            ejecutar(cur, con, """
+                UPDATE productos
+                SET stock = stock - %s
+                WHERE id = %s
+            """, (cantidad, item["id"]))
 
+        # ================= CLOUD SYNC ITEM =================
         items_cloud.append({
             "id": item_id,
             "producto_id": item["id"],
@@ -1749,10 +1757,10 @@ def carrito_confirmar():
             "subtotal": subtotal_item
         })
 
-    # ✅ AHORA SÍ: FUERA DEL FOR
     con.commit()
     con.close()
 
+    # ================= SYNC VENTA =================
     sync_venta_to_cloud(
         venta_id,
         fecha,
@@ -1888,6 +1896,29 @@ def vaciar_stock(id):
     con.close()
 
     return redirect("/stock")
+@app.route("/carrito/agregar_manual", methods=["POST"])
+def carrito_agregar_manual():
+    if "carrito" not in session:
+        session["carrito"] = []
+
+    desc = request.form.get("desc")
+    precio = float(request.form.get("precio") or 0)
+    cantidad = int(request.form.get("cantidad") or 1)
+
+    if not desc or precio <= 0:
+        return "❌ Datos inválidos"
+
+    session["carrito"].append({
+        "id": "manual_" + str(uuid.uuid4()),
+        "desc": "🧾 " + desc,
+        "precio": precio,
+        "cantidad": cantidad,
+        "manual": True
+    })
+
+    session.modified = True
+
+    return "OK"
 @app.route("/stock/eliminar/<id>")
 def eliminar_producto(id):
     if not session.get("admin") and not session.get("puede_agregar_productos"):
