@@ -173,7 +173,8 @@ def sync_worker():
         time.sleep(5)
 
 def get_db():
-    if internet_ok():
+    # 1. Si estamos en RENDER, conectamos SIEMPRE a Supabase (Directo)
+    if os.environ.get("RENDER"):
         try:
             return psycopg2.connect(
                 host="aws-1-us-east-1.pooler.supabase.com",
@@ -183,20 +184,17 @@ def get_db():
                 port=6543,
                 sslmode="require"
             )
-        except:
-            pass
+        except Exception as e:
+            print(f"❌ Error conexión Supabase en Render: {e}")
 
-    # 🔴 OFFLINE fallback con corrección para bloqueos
-    # timeout=30 hace que Flask espere si la base está ocupada
+    # 2. Si estamos en PC LOCAL, usamos SQLite (para que el worker trabaje)
+    # Esto permite que guardes local y el worker suba cuando haya internet
     con = sqlite3.connect(DB_PATH, timeout=30)
     con.row_factory = sqlite3.Row
-    
-    # Habilitamos el modo WAL para que no se bloquee entre procesos
     try:
         con.execute("PRAGMA journal_mode=WAL;")
     except:
         pass
-        
     return con
 
 def ejecutar(cur, conn, query, params=None):
@@ -2565,8 +2563,9 @@ def stock():
     return render_template("stock.html", productos=productos)
 
 # ================== RUN ==================
+import threading
+threading.Thread(target=sync_worker, daemon=True).start()
+
 if __name__ == "__main__":
-    threading.Thread(target=sync_worker, daemon=True).start()
-    app.run(debug=True)
-    print(app.url_map)
-   
+    # Esto solo se ejecuta en tu computadora local
+    app.run(debug=True, port=5000)
