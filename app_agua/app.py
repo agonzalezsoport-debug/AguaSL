@@ -37,9 +37,13 @@ def get_db_cloud():
 
 
 def get_db_local():
-    con = sqlite3.connect(DB_PATH)
+    # Agregamos timeout de 30 segundos
+    con = sqlite3.connect(DB_PATH, timeout=30)
     con.row_factory = sqlite3.Row 
+    # Habilitamos el modo WAL para permitir lecturas y escrituras simultáneas
+    con.execute("PRAGMA journal_mode=WAL;")
     return con
+
     
 def sync_worker():
     print("🚀 WORKER INICIADO Y ESPERANDO DATOS...")
@@ -182,8 +186,19 @@ def get_db():
         except:
             pass
 
-    # 🔴 OFFLINE fallback
-    return sqlite3.connect(DB_PATH)
+    # 🔴 OFFLINE fallback con corrección para bloqueos
+    # timeout=30 hace que Flask espere si la base está ocupada
+    con = sqlite3.connect(DB_PATH, timeout=30)
+    con.row_factory = sqlite3.Row
+    
+    # Habilitamos el modo WAL para que no se bloquee entre procesos
+    try:
+        con.execute("PRAGMA journal_mode=WAL;")
+    except:
+        pass
+        
+    return con
+
 def ejecutar(cur, conn, query, params=None):
     es_sqlite = isinstance(conn, sqlite3.Connection)
 
