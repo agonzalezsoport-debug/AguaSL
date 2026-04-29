@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="container">
+
+    <h2>👥 Clientes</h2>
+
+    <!-- ================= AGREGAR CLIENTE ================= -->
+    <div class="card">
+        <h3>➕ Nuevo Cliente</h3>
+
+        <form method="POST" action="/clientes/agregar">
+            <label>Nombre</label>
+            <input name="nombre" placeholder="Nombre" required>
+
+            <label>Teléfono</label>
+            <input name="telefono" placeholder="Teléfono">
+
+            <label>Dirección</label>
+            <input name="direccion" placeholder="Dirección">
+
+            <br>
+            <button>💾 Guardar Cliente</button>
+        </form>
+    </div>
+
+    <!-- ================= EDITAR CLIENTE ================= -->
+    {% if cliente_editar %}
+    <div class="card">
+        <h3>✏️ Editando Cliente</h3>
+
+        <form method="POST" action="/clientes/actualizar/{{cliente_editar[0]}}">
+            <label>Nombre</label>
+            <input name="nombre" value="{{cliente_editar[1]}}" required>
+
+            <label>Teléfono</label>
+            <input name="telefono" value="{{cliente_editar[2]}}">
+
+            <label>Dirección</label>
+            <input name="direccion" value="{{cliente_editar[3]}}">
+
+            <br>
+            <button>💾 Guardar cambios</button>
+        </form>
+    </div>
+    {% endif %}
+
+    <!-- ================= LISTADO ================= -->
+    <div class="grid">
+
+        {% for c in clientes %}
+        <div class="card">
+
+            <b>{{c[1]}}</b><br>
+            📞 {{c[2]}}<br>
+            📍 {{c[3]}}<br><br>
+
+            <!-- ✏️ EDITAR (FIX REAL) -->
+            <a href="/clientes?editar={{c[0]}}" class="btn">✏️ Editar</a>
+
+            <!-- 🗑️ ELIMINAR -->
+            <form method="POST" action="/clientes/eliminar/{{c[0]}}" style="display:inline;">
+                <button onclick="return confirm('¿Eliminar cliente?')">🗑️ Eliminar</button>
+            </form>
+
+        </div>
+        {% endfor %}
+
+    </div>
+
+</div>
+
+{% endblock %}

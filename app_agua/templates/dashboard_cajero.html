@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2>💼 Bienvenido, {{ nombre }}</h2>
+
+<div class="grid">
+    <div class="card stat blue">
+        <h3>{{ productos }}</h3>
+        <p>Productos en Sistema</p>
+    </div>
+    <div class="card stat orange">
+        <h3>{{ pedidos }}</h3>
+        <p>Pedidos Pendientes</p>
+    </div>
+</div>
+
+<div class="card">
+    <h2>💰 Estado de Caja</h2>
+
+    {% if caja_abierta %}
+        <p>🟢 <b>Caja ABIERTA</b></p>
+        <p>Monto Inicial: <b>${{ "%.2f"|format(apertura) }}</b></p>
+        
+        <div style="margin: 15px 0; padding: 15px; background: #f8f9fa; border-left: 5px solid #007bff; border-radius: 5px;">
+            <h4>📊 Desglose de Ventas:</h4>
+            {% for metodo, monto in ventas_por_metodo %}
+                <p style="display: flex; justify-content: space-between; margin: 5px 0;">
+                    <span>🔹 {{ metodo }}:</span>
+                    <b>${{ "%.2f"|format(monto) }}</b>
+                </p>
+            {% endfor %}
+            <hr>
+            <p style="display: flex; justify-content: space-between;">
+                <span>💵 Total Efectivo:</span>
+                <b>${{ "%.2f"|format(solo_efectivo) }}</b>
+            </p>
+            <p style="display: flex; justify-content: space-between; font-size: 1.1em; color: #28a745;">
+                <span>💰 Total General:</span>
+                <b>${{ "%.2f"|format(total_ventas) }}</b>
+            </p>
+        </div>
+
+        <p style="font-size: 1.3em; text-align: center; background: #e9ecef; padding: 10px; border-radius: 5px;">
+            🏦 <b>Efectivo Estimado en Caja: <br> ${{ "%.2f"|format(apertura + solo_efectivo) }}</b>
+        </p>
+
+    {% else %}
+        <p style="color: red; font-weight: bold;">🔴 Caja CERRADA</p>
+    {% endif %}
+</div>
+
+<div class="card">
+    <h2>Acciones rápidas</h2>
+    <div class="grid">
+        
+        <!-- VENTAS -->
+        {% if session['permisos'] and session['permisos'].get('vender') == 1 %}
+        <a href="/ventas_ui" class="card" style="text-align:center; text-decoration:none; color:inherit;">
+            <div style="font-size: 2em;">💰</div> <b>Ventas</b>
+        </a>
+        {% endif %}
+
+        <!-- PEDIDOS -->
+        {% if session['permisos'] and session['permisos'].get('pedidos') == 1 %}
+        <a href="/mis_pedidos" class="card" style="text-align:center; text-decoration:none; color:inherit;">
+            <div style="font-size: 2em;">📦</div> <b>Pedidos</b>
+        </a>
+        {% endif %}
+
+        <!-- STOCK -->
+        {% if session['permisos'] and session['permisos'].get('stock') == 1 %}
+        <a href="/stock" class="card" style="text-align:center; text-decoration:none; color:inherit;">
+            <div style="font-size: 2em;">📊</div> <b>Stock</b>
+        </a>
+        {% endif %}
+
+        <!-- REPORTES -->
+        {% if session['permisos'] and session['permisos'].get('reportes') == 1 %}
+        <a href="/reporte_ventas_cajero" class="card" style="text-align:center; text-decoration:none; color:inherit;">
+            <div style="font-size: 2em;">📈</div> <b>Reportes</b>
+        </a>
+        {% endif %}
+
+        <!-- AGREGAR PRODUCTO -->
+        {% if session['permisos'] and session['permisos'].get('agregar') == 1 %}
+        <a href="/productos/agregar" class="card" style="text-align:center; text-decoration:none; color:inherit;">
+            <div style="font-size: 2em;">➕</div> <b>Nuevo Prod.</b>
+        </a>
+        {% endif %}
+
+        <!-- PROMOS -->
+        {% if session['permisos'] and session['permisos'].get('vender') == 1 %}
+        <a href="/promos" class="card" style="text-align:center; text-decoration:none; color:inherit;">
+            <div style="font-size: 2em;">🎁</div> <b>Promos</b>
+        </a>
+        {% endif %}
+
+    </div>
+</div>
+
+<div style="margin-top:20px;">
+    {% if caja_abierta %}
+        <button onclick="abrirModalCierre()" class="btn danger" style="width: 100%; padding: 15px; font-size: 1.1em;">
+            🔒 Cerrar Turno / Caja
+        </button>
+    {% else %}
+        <a href="/caja/apertura" class="btn success" style="display: block; text-align: center; padding: 15px; font-size: 1.1em;">
+            🟢 Abrir Nueva Caja
+        </a>
+    {% endif %}
+</div>
+
+<!-- MODAL DE CIERRE -->
+<div id="modalCaja" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); z-index: 9999;">
+    <div style="background:white; padding:20px; max-width:400px; margin:80px auto; border-radius:10px; text-align:center; box-shadow: 0 4px 15px rgba(0,0,0,0.3);">
+        <h2>💰 Cierre de Caja</h2>
+        <p>Debes tener en efectivo (Apertura + Ventas):</p>
+        <h3 style="color: #28a745;">${{ "%.2f"|format(apertura + solo_efectivo) }}</h3>
+        
+        <input type="number" id="total_real" placeholder="Ingresa el dinero contado" style="width:90%; padding:12px; margin: 10px 0; border: 1px solid #ccc; border-radius: 5px; font-size: 1.1em;">
+        
+        <p id="diferencia" style="margin-top:10px; font-weight: bold; font-size: 1.1em;"></p>
+        
+        <div style="margin-top: 20px; display: flex; gap: 10px; justify-content: center;">
+            <button onclick="confirmarCierre()" class="btn success">Confirmar</button>
+            <button onclick="cerrarModal()" class="btn">Cancelar</button>
+        </div>
+    </div>
+</div>
+
+<script>
+function abrirModalCierre(){ document.getElementById("modalCaja").style.display = "block"; }
+function cerrarModal(){ document.getElementById("modalCaja").style.display = "none"; }
+
+document.getElementById("total_real").addEventListener("input", function(){
+    let esperado = {{ apertura + solo_efectivo }};
+    let real = parseFloat(this.value || 0);
+    let diff = real - esperado;
+    let el = document.getElementById("diferencia");
+    
+    el.innerHTML = "Diferencia: $" + diff.toFixed(2);
+    el.style.color = diff >= 0 ? (diff == 0 ? "black" : "green") : "red";
+});
+
+function confirmarCierre(){
+    let monto = document.getElementById("total_real").value;
+    if(!monto || monto < 0) return alert("Ingresa un monto válido");
+
+    fetch("/caja/cerrar", {
+        method: "POST",
+        headers: {"Content-Type": "application/x-www-form-urlencoded"},
+        body: "total_real=" + monto
+    }).then(r => r.text()).then(res => {
+        alert(res);
+        window.location.reload();
+    });
+}
+</script>
+
+{% endblock %}

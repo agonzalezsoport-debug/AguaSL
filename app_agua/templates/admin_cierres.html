@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="header-section" style="margin-bottom: 25px;">
+    <h2 style="display: flex; align-items: center; gap: 10px;">
+        <span style="font-size: 30px;">📋</span> Historial de Turnos y Cierres
+    </h2>
+    <p style="color: var(--muted); font-size: 14px;">Consulta el rendimiento y arqueo de cada cajero.</p>
+</div>
+
+<div class="card">
+    <div style="overflow-x: auto;">
+        <table style="width: 100%; border-collapse: collapse; min-width: 600px;">
+            <thead>
+                <tr style="text-align: left; border-bottom: 2px solid var(--bg);">
+                    <th style="padding: 15px; color: var(--muted); font-size: 13px;">CAJERO</th>
+                    <th style="padding: 15px; color: var(--muted); font-size: 13px;">APERTURA</th>
+                    <th style="padding: 15px; color: var(--muted); font-size: 13px;">CIERRE</th>
+                    <th style="padding: 15px; color: var(--muted); font-size: 13px;">INICIAL</th>
+                    <th style="padding: 15px; color: var(--muted); font-size: 13px;">REAL</th>
+                    <th style="padding: 15px; color: var(--muted); font-size: 13px;">DIFERENCIA</th>
+                    <th style="padding: 15px; color: var(--muted); font-size: 13px;">ESTADO</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for c in cierres %}
+                <tr style="border-bottom: 1px solid var(--bg); transition: 0.2s;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='transparent'">
+                    <td style="padding: 15px;"><strong>{{ c[1] }}</strong></td>
+                    <td style="padding: 15px; font-size: 13px; color: var(--muted);">{{ c[2] }}</td>
+                    <td style="padding: 15px; font-size: 13px; color: var(--muted);">{{ c[3] if c[3] else '---' }}</td>
+                    <td style="padding: 15px; font-weight: 600;">${{ "{:,.2f}".format(c[4]) }}</td>
+                    <td style="padding: 15px; font-weight: 600;">${{ "{:,.2f}".format(c[5]) if c[5] is not none else '---' }}</td>
+                    <td style="padding: 15px;">
+                        {% if c[6] is not none %}
+                            <span class="estado {{ 'entregado' if c[6] >= 0 else 'pendiente' }}" style="font-size: 13px;">
+                                ${{ "{:,.2f}".format(c[6]) }}
+                            </span>
+                        {% else %}
+                            <span style="color: var(--muted);">---</span>
+                        {% endif %}
+                    </td>
+                    <td style="padding: 15px;">
+                        <span class="badge {{ 'admin' if c[7] == 'ABIERTA' else '' }}" style="background: {{ '#22c55e' if c[7] == 'ABIERTA' else '#94a3b8' }};">
+                            {{ c[7] }}
+                        </span>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Estilo extra para simular los botones del sistema si quieres agregar acciones -->
+<style>
+    .badge.admin {
+        background: linear-gradient(135deg, #22c55e, #16a34a) !important;
+    }
+</style>
+{% endblock %}

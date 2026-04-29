@@ -1,0 +1,29 @@
+
+{% extends "base.html" %}
+
+{% block content %}
+
+<h2>👨‍💼 Cajeros</h2>
+
+<table border="1" style="width:100%;text-align:center;">
+    <tr>
+        <th>ID</th>
+        <th>Usuario</th>
+        <th>Rol</th>
+        <th>Acción</th>
+    </tr>
+
+    {% for c in cajeros %}
+    <tr>
+        <td>{{ c[0] }}</td>
+        <td>{{ c[1] }}</td>
+        <td>{{ c[2] }}</td>
+        <td>
+            <a href="/eliminar_cajero/{{ c[0] }}">❌</a>
+            <a href="/permisos_cajero/{{ c[0] }}">🔐 Permisos</a>
+        </td>
+    </tr>
+    {% endfor %}
+</table>
+
+{% endblock %}

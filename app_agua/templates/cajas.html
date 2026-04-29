@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<h2>📊 Historial de Cajas</h2>
+
+<div class="card">
+
+    <table style="width:100%; border-collapse: collapse;">
+
+        <thead>
+            <tr style="background:#eee;">
+                <th>ID</th>
+                <th>Cajero</th>
+                <th>Apertura</th>
+                <th>Cierre</th>
+                <th>Estado</th>
+                <th>Inicial</th>
+                <th>Final</th>
+                <th>Diferencia</th>
+            </tr>
+        </thead>
+
+        <tbody>
+        {% for c in cajas %}
+            <tr style="text-align:center; border-bottom:1px solid #ddd;">
+
+                <td>{{ c[0][:6] }}</td>
+                <td>{{ c[1] }}</td>
+                <td>{{ c[2] }}</td>
+                <td>{{ c[3] or "-" }}</td>
+
+                <td>
+                    {% if c[4] == "ABIERTA" %}
+                        🟢 Abierta
+                    {% else %}
+                        🔴 Cerrada
+                    {% endif %}
+                </td>
+
+                <td>${{ "%.2f"|format(c[5] or 0) }}</td>
+                <td>${{ "%.2f"|format(c[6] or 0) }}</td>
+
+                <td>
+                    {% set diff = c[7] or 0 %}
+                    <span style="
+                        color:
+                        {% if diff > 0 %}green
+                        {% elif diff < 0 %}red
+                        {% else %}black{% endif %}
+                    ">
+                        ${{ "%.2f"|format(diff) }}
+                    </span>
+                </td>
+
+            </tr>
+        {% endfor %}
+        </tbody>
+
+    </table>
+
+</div>
+
+<a href="/dashboard_cajero" class="btn">⬅ Volver</a>
+
+{% endblock %}

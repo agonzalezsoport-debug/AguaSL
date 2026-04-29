@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>Editar Promo ✏️</h2>
+
+<div class="card">
+<form method="POST">
+    <input name="nombre" value="{{ promo[1] }}" required>
+    <input name="descripcion" value="{{ promo[2] }}">
+    <input name="precio" value="{{ promo[3] }}" required>
+
+    <button type="submit" class="btn-guardar">💾 Guardar cambios</button>
+</form>
+</div>
+
+{% endblock %}
