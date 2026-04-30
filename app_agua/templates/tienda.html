@@ -2,73 +2,187 @@
 {% block content %}
 
 <div class="tienda-container" style="max-width: 1200px; margin: auto; padding: 20px;">
+    
+    <!-- CABECERA TIENDA -->
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px;">
-        <h2>🛒 Tienda Online</h2>
+        <h2 style="font-weight: 800; color: #333;">🛒 Tienda Online</h2>
         <a href="/carrito" class="btn-carrito-fijo">
             <span>Ver mi pedido</span> 🛍️
         </a>
     </div>
 
-    <!-- Filtros por Departamento -->
+    <!-- FILTROS POR DEPARTAMENTO -->
     <div class="filtros" style="margin-bottom: 25px; display: flex; gap: 10px; overflow-x: auto; padding-bottom: 10px;">
-        <button class="badge active">Todos</button>
-        <button class="badge">Agua</button>
-        <button class="badge">Sodas</button>
-        <button class="badge">Accesorios</button>
+        <button class="badge-filter active">Todos</button>
+        <button class="badge-filter">Agua</button>
+        <button class="badge-filter">Sodas</button>
+        <button class="badge-filter">Accesorios</button>
     </div>
 
-    <div class="productos-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 25px;">
+    <!-- REJILLA DE PRODUCTOS -->
+    <div class="productos-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 25px;">
+        
         {% for p in productos %}
-        <div class="producto-card-tienda" style="background: white; border-radius: 20px; overflow: hidden; box-shadow: 0 10px 20px rgba(0,0,0,0.05); border: 1px solid #f0f0f0; transition: 0.3s;">
-            <div class="foto-placeholder" style="height: 180px; background: #e7f3ff; display: flex; align-items: center; justify-content: center; font-size: 4rem;">
-                {% if 'Agua' in p[1] %}💧{% elif 'Soda' in p[1] %}🍾{% else %}📦{% endif %}
+        <div class="producto-card-tienda">
+            
+            <!-- 🖼️ IMAGEN DEL PRODUCTO (Lógica de detección) -->
+            <div class="foto-wrapper">
+                {% if p[8] %} 
+                    <!-- Si tiene foto en la DB (Índice 8 del SELECT) -->
+                    <img src="/static/productos/{{ p[8] }}" alt="{{ p[1] }}" class="img-real">
+                {% else %}
+                    <!-- Fallback: Emoji si no hay foto -->
+                    <div class="emoji-fallback">
+                        {% if 'Agua' in p[1] %}💧{% elif 'Soda' in p[1] %}🍾{% else %}📦{% endif %}
+                    </div>
+                {% endif %}
             </div>
             
+            <!-- INFO DEL PRODUCTO -->
             <div style="padding: 20px;">
-                <span style="font-size: 0.8rem; color: #007bff; font-weight: bold; text-transform: uppercase;">{{ p[5] }}</span>
-                <h3 style="margin: 5px 0; color: #333;">{{ p[1] }}</h3>
-                <p style="color: #888; font-size: 0.9rem;">Presentación: {{ p[4] }} Litros</p>
+                <span class="tag-departamento">{{ p[5] }}</span>
+                <h3 class="prod-titulo">{{ p[1] }}</h3>
+                <p class="prod-info">Presentación: {{ p[4] }} Litros</p>
                 
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 20px;">
-                    <span style="font-size: 1.5rem; font-weight: 800; color: #28a745;">${{ "%.2f"|format(p[2]) }}</span>
+                    <span class="prod-precio">${{ "%.2f"|format(p[2]) }}</span>
                     
                     <form action="/carrito/agregar" method="POST" style="margin: 0;">
                         <input type="hidden" name="id" value="{{ p[0] }}">
-                        <button type="submit" class="btn-add" style="background: #007bff; color: white; border: none; padding: 10px 20px; border-radius: 12px; font-weight: bold; cursor: pointer;">
+                        <button type="submit" class="btn-add">
                             ➕ Agregar
                         </button>
                     </form>
                 </div>
             </div>
+
         </div>
         {% endfor %}
+
     </div>
 </div>
 
 <style>
+    /* Estilos de la Tarjeta (Igual a tu imagen) */
+    .producto-card-tienda {
+        background: white;
+        border-radius: 25px;
+        overflow: hidden;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+        border: 1px solid #f0f0f0;
+        transition: all 0.3s ease;
+    }
+
     .producto-card-tienda:hover {
         transform: translateY(-10px);
-        box-shadow: 0 15px 30px rgba(0,0,0,0.1);
+        box-shadow: 0 20px 40px rgba(0,123,255,0.1);
         border-color: #007bff;
     }
+
+    /* Contenedor de Foto */
+    .foto-wrapper {
+        height: 220px;
+        background: #eef7ff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+    }
+
+    .img-real {
+    width: 100%;
+    height: 100%;
+    /* 
+       Cambiamos 'cover' por 'contain' para que la foto se vea completa 
+       y agregamos un padding para que no toque los bordes.
+    */
+    object-fit: contain; 
+    padding: 15px; 
+}
+
+.foto-wrapper {
+    height: 180px; /* Bajamos un poco la altura de 220px a 180px */
+    background: #f8f9fa; /* Un gris muy clarito de fondo queda mejor */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+}
+
+
+    .emoji-fallback {
+        font-size: 5rem;
+    }
+
+    /* Etiquetas y Textos */
+    .tag-departamento {
+        font-size: 0.75rem;
+        color: #007bff;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+
+    .prod-titulo {
+        margin: 5px 0;
+        color: #333;
+        font-size: 1.3rem;
+        font-weight: 700;
+    }
+
+    .prod-info {
+        color: #888;
+        font-size: 0.9rem;
+        margin: 0;
+    }
+
+    .prod-precio {
+        font-size: 1.6rem;
+        font-weight: 800;
+        color: #28a745;
+    }
+
+    /* Botones */
     .btn-carrito-fijo {
-        background: #333;
+        background: #111;
         color: white;
         padding: 12px 25px;
         border-radius: 50px;
         text-decoration: none;
-        font-weight: bold;
+        font-weight: 700;
+        display: flex;
+        gap: 10px;
         box-shadow: 0 5px 15px rgba(0,0,0,0.2);
     }
-    .badge {
+
+    .btn-add {
+        background: #007bff;
+        color: white;
+        border: none;
+        padding: 12px 22px;
+        border-radius: 15px;
+        font-weight: 700;
+        cursor: pointer;
+        transition: 0.3s;
+    }
+
+    .btn-add:hover {
+        background: #0056b3;
+        transform: scale(1.05);
+    }
+
+    .badge-filter {
         background: white;
         border: 1px solid #ddd;
-        padding: 8px 20px;
+        padding: 10px 22px;
         border-radius: 50px;
+        font-weight: 600;
         cursor: pointer;
         white-space: nowrap;
+        color: #666;
     }
-    .badge.active {
+
+    .badge-filter.active {
         background: #007bff;
         color: white;
         border-color: #007bff;
