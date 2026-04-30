@@ -1,45 +1,105 @@
 {% extends "base.html" %}
-
 {% block content %}
 
 <h2>💧 Promos disponibles</h2>
 
 {% for p in promos %}
-<div class="card">
-
+<div class="card" style="margin-bottom: 20px; padding: 15px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
     <strong>{{p[1]}}</strong>
     <div class="muted">{{p[2]}}</div>
-    <div class="precio">${{p[3]}}</div>
+    <div class="precio" style="font-weight: bold; color: #28a745; margin: 5px 0;">${{p[3]}}</div>
 
     <form method="POST" action="/pedidos_cliente/agregar">
+        <!-- ID de la promo -->
         <input type="hidden" name="promo_id" value="{{p[0]}}">
-        <label>Fecha de entrega:</label>
-        <input type="date" name="fecha" required>
-        <button type="submit">Pedir ahora</button>
-    </form>
+        
+        <!-- CAMPOS OCULTOS GPS -->
+        <input type="hidden" name="latitud" id="lat-{{p[0]}}">
+        <input type="hidden" name="longitud" id="lng-{{p[0]}}">
 
+        <label style="display: block; margin-top: 10px;">📅 Fecha de entrega:</label>
+        <input type="date" name="fecha" required style="width: 100%; padding: 8px; margin-bottom: 10px; border-radius: 5px; border: 1px solid #ddd;">
+        
+        <!-- BOTÓN GPS -->
+        <div style="margin-bottom: 15px;">
+            <button type="button" onclick="obtenerGPS('{{p[0]}}')" id="btn-{{p[0]}}" 
+                    style="width: 100%; padding: 10px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 0.9em;">
+                📍 Señalar mi ubicación (GPS)
+            </button>
+            <p id="status-{{p[0]}}" style="font-size: 0.8em; margin-top: 5px; color: #666;"></p>
+            
+            <!-- LINK DE VERIFICACIÓN (Aparece al localizar) -->
+            <div id="ver-mapa-{{p[0]}}" style="display:none; margin-top:5px;">
+                <a id="link-mapa-{{p[0]}}" href="#" target="_blank" style="color: #007bff; font-size: 0.85em; text-decoration: none; font-weight: bold;">
+                    🗺️ Ver mi ubicación en Google Maps
+                </a>
+            </div>
+        </div>
+
+        <button type="submit" class="btn success" style="width: 100%; padding: 12px; font-weight: bold; cursor: pointer; background: #28a745; color: white; border: none; border-radius: 5px;">
+            🚀 Pedir ahora
+        </button>
+    </form>
 </div>
 {% endfor %}
 
 <h2>📦 Mis pedidos</h2>
-
 {% for p in pedidos %}
 <div class="card">
-
     <div>
         <strong>{{p[1]}}</strong>
         <div class="muted">{{p[2]}}</div>
     </div>
-
-    <!-- ESTADO CORREGIDO -->
-    <span class="estado {{p[3]|lower|replace(' ', '')}}">
-        {{p[3]}}
-    </span>
-
+    <span class="estado {{p[3]|lower|replace(' ', '')}}">{{p[3]}}</span>
 </div>
 {% endfor %}
 
-<!-- BOTÓN FLOTANTE -->
-<div class="fab">+</div>
+<script>
+function obtenerGPS(id) {
+    const status = document.getElementById('status-' + id);
+    const btn = document.getElementById('btn-' + id);
+    const divMapa = document.getElementById('ver-mapa-' + id);
+    const linkMapa = document.getElementById('link-mapa-' + id);
 
+    if (!navigator.geolocation) {
+        status.innerText = "❌ GPS no soportado";
+        return;
+    }
+
+    status.innerText = "🛰️ Localizando...";
+    status.style.color = "#666";
+
+    const opciones = {
+        enableHighAccuracy: true, 
+        timeout: 10000,            
+        maximumAge: 0
+    };
+
+    navigator.geolocation.getCurrentPosition(function(pos) {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+
+        // Llenamos los inputs ocultos
+        document.getElementById('lat-' + id).value = lat;
+        document.getElementById('lng-' + id).value = lng;
+        
+        // UI Éxito
+        status.innerText = "✅ Ubicación fijada";
+        status.style.color = "green";
+        btn.style.background = "#28a745";
+        btn.innerText = "📍 Ubicación capturada";
+
+        // Mostrar link para que el cliente verifique
+        linkMapa.href = `https://google.com{lat},${lng}`;
+        divMapa.style.display = "block";
+
+    }, function(error) {
+        console.log("Error GPS:", error);
+        if(error.code == 1) status.innerText = "❌ Permiso denegado";
+        else if(error.code == 2) status.innerText = "❌ Ubicación no disponible";
+        else status.innerText = "❌ Tiempo agotado";
+        status.style.color = "red";
+    }, opciones);
+}
+</script>
 {% endblock %}
