@@ -1,50 +1,37 @@
 {% extends "base.html" %}
-
 {% block content %}
-
 <div class="container">
-
     <h2>📦 Gestión de Pedidos</h2>
 
     {% for p in pedidos %}
-    <div class="card" style="border-left: 5px solid #ddd; margin-bottom: 15px; padding: 15px;">
+    <div class="card" style="border-left: 5px solid #ddd; margin-bottom: 15px; padding: 15px; background: #fff;">
+        <strong>Pedido #{{ p[0] }}</strong><br>
+        <b>👤 Cliente:</b> {{ p[1] }}<br>
+        <b>📅 Fecha:</b> {{ p[3] }}<br>
 
-        <!-- INFO DEL PEDIDO -->
-        <strong>Pedido #{{p[0]}}</strong><br>
-        <b>👤 Cliente:</b> {{p[1]}}<br>
-        <b>💧 Promo:</b> {{p[2]}}<br>
-        <b>📅 Fecha:</b> {{p[3]}}<br><br>
-
-        <!-- 📍 BOTÓN DE GPS (Si tiene coordenadas) -->
+        <!-- BOTÓN MAPA PARA ADMIN -->
         {% if p[5] and p[6] %}
-        <div style="margin-bottom: 15px;">
-            <a href="https://google.com{{p[5]}},{{p[6]}}" target="_blank" 
-               class="btn" style="background: #4285F4; color: white; display: inline-flex; align-items: center; gap: 8px; text-decoration: none; padding: 10px; border-radius: 5px; font-weight: bold;">
+        <div style="margin: 15px 0;">
+            <a href="https://google.com{{ p[5] }},{{ p[6] }}" 
+               target="_blank" rel="noopener noreferrer"
+               style="background: #4285F4; color: white; display: inline-flex; align-items: center; gap: 8px; text-decoration: none; padding: 10px; border-radius: 5px; font-weight: bold; font-size: 0.9em;">
                 📍 VER UBICACIÓN EN MAPA
             </a>
         </div>
         {% else %}
-        <p style="color: #888; font-size: 0.85em;"><i>Ubicación GPS no proporcionada</i></p>
+        <p style="color: #888; font-size: 0.85em; margin: 10px 0;"><i>Ubicación GPS no proporcionada</i></p>
         {% endif %}
 
-        <!-- ESTADO ACTUAL -->
-        <div style="margin-bottom: 15px;">
-            <span class="estado {{p[4]|lower|replace(' ', '')}}" style="padding: 5px 10px; border-radius: 3px;">
-                {{p[4]}}
-            </span>
+        <div style="margin-bottom: 10px;">
+            <span class="estado {{ p[4]|lower|replace(' ', '') }}">{{ p[4] }}</span>
         </div>
 
-        <!-- BOTONES PARA CAMBIAR ESTADO -->
-        <div style="display:flex; gap:10px; flex-wrap:wrap;">
-            <a href="/pedido/estado/{{p[0]}}/pendiente" class="btn" style="font-size: 0.8em;">Pendiente</a>
-            <a href="/pedido/estado/{{p[0]}}/enproceso" class="btn" style="font-size: 0.8em;">En proceso</a>
-            <a href="/pedido/estado/{{p[0]}}/entregado" class="btn" style="font-size: 0.8em; background: #28a745; color: white;">Entregado</a>
-            <a href="/pedido/estado/{{p[0]}}/cancelado" class="btn" style="font-size: 0.8em; background: #dc3545; color: white;">Cancelar</a>
+        <div style="display:flex; gap:5px; flex-wrap:wrap;">
+            <a href="/pedido/estado/{{ p[0] }}/pendiente" class="btn small">Pendiente</a>
+            <a href="/pedido/estado/{{ p[0] }}/enproceso" class="btn small">Proceso</a>
+            <a href="/pedido/estado/{{ p[0] }}/entregado" class="btn small success" style="background:#28a745; color:white;">Entregado</a>
         </div>
-
     </div>
     {% endfor %}
-
 </div>
-
 {% endblock %}
