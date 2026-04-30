@@ -22,6 +22,14 @@ DB_PATH = os.path.join(BASE_DIR, "database.db")
 
 #  Estados corregidos (IMPORTANTE)
 ESTADOS_VALIDOS = ["pendiente", "enproceso", "entregado", "cancelado"]
+import os
+from werkzeug.utils import secure_filename
+
+# Configuración de carpeta para fotos (Crea la carpeta 'static/productos' si no existe)
+UPLOAD_FOLDER = 'static/productos'
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER)
+
 
 
 
@@ -98,12 +106,19 @@ def sync_worker():
                                 diferencia = EXCLUDED.diferencia
                         """, (data["id"], data.get("cajero"), data.get("fecha_apertura"), data.get("fecha_cierre"), data.get("cierre", 0), data.get("estado", "ABIERTA"), data.get("apertura", 0), data.get("diferencia", 0)))
 
-                    # ================= PRODUCTOS =================
+                    # ================= PRODUCTOS (ACTUALIZADO CON FOTO) =================
                     elif tabla == "productos":
                         cur_cloud.execute("""
-                            INSERT INTO productos(id, codigo, descripcion, litros, precio, stock, fecha, departamento)
-                            VALUES (%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (id) DO NOTHING
-                        """, (data["id"], data["codigo"], data["descripcion"], data["litros"], data["precio"], data["stock"], data["fecha"], data.get("departamento")))
+                            INSERT INTO productos(id, codigo, descripcion, litros, precio, stock, fecha, departamento, foto)
+                            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) 
+                            ON CONFLICT (id) DO UPDATE SET
+                                precio = EXCLUDED.precio,
+                                stock = EXCLUDED.stock,
+                                descripcion = EXCLUDED.descripcion,
+                                foto = EXCLUDED.foto
+                        """, (data["id"], data["codigo"], data["descripcion"], data["litros"], 
+                              data["precio"], data["stock"], data["fecha"], data.get("departamento"), 
+                              data.get("foto"))) # 🔥 Se agrega data.get("foto")
 
                     # ================= VENTAS =================
                     elif tabla == "ventas":
@@ -171,6 +186,7 @@ def sync_worker():
             print(f"🔥 ERROR GLOBAL: {e}")
         
         time.sleep(5)
+
 
 def get_db():
     # 1. Si estamos en RENDER, conectamos SIEMPRE a Supabase (Directo)
@@ -417,15 +433,18 @@ def index():
     return render_template("index.html")
 @app.route("/tienda")
 def tienda():
-    con = get_db() # Usa tu función que detecta si es Cloud o Local
+    con = get_db()
     cur = con.cursor()
-    
-    # Traemos solo los productos que tienen stock
-    ejecutar(cur, con, "SELECT id, descripcion, precio, stock, litros, departamento FROM productos WHERE stock > 0")
+    # Traemos todos los campos incluyendo 'foto' al final
+    ejecutar(cur, con, """
+        SELECT id, descripcion, precio, stock, litros, departamento, fecha, codigo, foto 
+        FROM productos 
+        WHERE stock > 0
+    """)
     productos = cur.fetchall()
     con.close()
-    
     return render_template("tienda.html", productos=productos)
+
 
 @app.route("/clientes/agregar", methods=["POST"])
 def agregar_cliente():
@@ -1074,13 +1093,13 @@ def agregar_promo():
 
     return redirect("/promos")
 
+
 import uuid
 from datetime import datetime
 
 @app.route("/productos/agregar", methods=["GET", "POST"])
 def agregar_producto():
     # 🔐 VALIDACIÓN DE PERMISOS CORREGIDA
-    # Verificamos si es Admin o si el cajero tiene el permiso "agregar" en su sesión
     permisos = session.get("permisos", {})
     es_admin = session.get("admin")
     tiene_permiso = permisos.get("agregar") == 1
@@ -1097,6 +1116,16 @@ def agregar_producto():
             precio = float(request.form.get("precio") or 0)
             stock = int(request.form.get("stock") or 0)
             departamento = request.form.get("departamento")
+            
+            # --- 🔥 NUEVO: MANEJO DE FOTO ---
+            foto = request.files.get('foto')
+            nombre_foto = "" # Valor por defecto si no suben nada
+            
+            if foto and foto.filename != '':
+                # Aseguramos un nombre de archivo seguro y único
+                extension = os.path.splitext(foto.filename)[1]
+                nombre_foto = f"{codigo}_{str(uuid.uuid4())[:8]}{extension}"
+                foto.save(os.path.join(UPLOAD_FOLDER, nombre_foto))
 
             if not codigo:
                 return "❌ Código vacío"
@@ -1109,12 +1138,13 @@ def agregar_producto():
             con = get_db_local()
             cur = con.cursor()
             
+            # Agregamos la columna 'foto' al INSERT
             cur.execute("""
                 INSERT INTO productos (
-                    id, codigo, descripcion, litros, precio, stock, fecha, departamento
+                    id, codigo, descripcion, litros, precio, stock, fecha, departamento, foto
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (producto_id, codigo, descripcion, litros, precio, stock, fecha, departamento))
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (producto_id, codigo, descripcion, litros, precio, stock, fecha, departamento, nombre_foto))
 
             con.commit()
             con.close()
@@ -1128,12 +1158,13 @@ def agregar_producto():
                 "precio": precio,
                 "stock": stock,
                 "fecha": fecha,
-                "departamento": departamento
+                "departamento": departamento,
+                "foto": nombre_foto # 🔥 Enviamos el nombre de la foto a la nube
             }
             # Guardamos para que el worker lo suba a la nube después
             save_offline("productos", "insert", data_producto)
 
-            flash("✅ Producto guardado localmente y en cola de sincronización")
+            flash("✅ Producto guardado localmente con éxito")
             return redirect("/productos/agregar")
 
         except sqlite3.IntegrityError:
@@ -1143,6 +1174,7 @@ def agregar_producto():
 
     # Si es GET, mostramos el formulario
     return render_template("agregar_producto.html")
+
 
 # ================== MIS PEDIDOS CLIENTE ==================
 @app.route("/mis_pedidos")
