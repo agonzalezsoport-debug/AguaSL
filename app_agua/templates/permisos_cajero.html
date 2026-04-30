@@ -1,37 +1,188 @@
 {% extends "base.html" %}
-
 {% block content %}
 
-<h2>🔐 Permisos Cajero</h2>
+<style>
+    .permissions-container {
+        max-width: 500px;
+        margin: 40px auto;
+        padding: 20px;
+    }
 
-<form method="POST">
+    .card-permissions {
+        background: white;
+        border-radius: 20px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+        padding: 30px;
+    }
 
-    <label>
-        <input type="checkbox" name="vender" {% if cajero[3] == 1 %}checked{% endif %}>
-        💰 Puede vender
-    </label><br>
+    .header-admin {
+        text-align: center;
+        margin-bottom: 30px;
+    }
 
-    <label>
-        <input type="checkbox" name="pedidos" {% if cajero[4] == 1 %}checked{% endif %}>
-        📦 Ver pedidos
-    </label><br>
+    .header-admin i { font-size: 3rem; color: #007bff; margin-bottom: 10px; }
+    .header-admin h2 { margin: 0; color: #333; font-size: 1.5rem; }
+    .header-admin p { color: #888; font-size: 0.9rem; }
 
-    <label>
-        <input type="checkbox" name="reportes" {% if cajero[5] == 1 %}checked{% endif %}>
-        📊 Ver reportes
-    </label><br>
+    /* Estilo de cada fila de permiso */
+    .permiso-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 15px 0;
+        border-bottom: 1px solid #f0f0f0;
+        transition: 0.2s;
+    }
 
-    <label>
-        <input type="checkbox" name="stock" {% if cajero[6] == 1 %}checked{% endif %}>
-        📦 Ver stock
-    </label><br><br>
-    <label>
-        <input type="checkbox" name="agregar_productos" {% if cajero[7] == 1 %}checked{% endif %}>
-       📦 Agregar productos
-    </label><br>
+    .permiso-row:last-child { border-bottom: none; }
+    
+    .permiso-info { display: flex; align-items: center; gap: 15px; }
+    .permiso-info span { font-size: 1.5rem; }
+    .permiso-label {
+        font-weight: 600;
+        color: #444;
+        cursor: pointer;
+    }
 
-    <button type="submit">Guardar</button>
+    /* --- ESTILO SWITCH (INTERRUPTOR) --- */
+    .switch {
+        position: relative;
+        display: inline-block;
+        width: 50px;
+        height: 26px;
+    }
 
-</form>
+    .switch input { opacity: 0; width: 0; height: 0; }
+
+    .slider {
+        position: absolute;
+        cursor: pointer;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background-color: #ccc;
+        transition: .4s;
+        border-radius: 34px;
+    }
+
+    .slider:before {
+        position: absolute;
+        content: "";
+        height: 18px; width: 18px;
+        left: 4px; bottom: 4px;
+        background-color: white;
+        transition: .4s;
+        border-radius: 50%;
+    }
+
+    input:checked + .slider { background-color: #28a745; }
+    input:checked + .slider:before { transform: translateX(24px); }
+
+    /* Botón Guardar */
+    .btn-save {
+        width: 100%;
+        margin-top: 30px;
+        padding: 15px;
+        border: none;
+        border-radius: 12px;
+        background: #007bff;
+        color: white;
+        font-size: 1rem;
+        font-weight: bold;
+        cursor: pointer;
+        transition: 0.3s;
+        box-shadow: 0 4px 15px rgba(0, 123, 255, 0.2);
+    }
+
+    .btn-save:hover {
+        background: #0056b3;
+        transform: translateY(-2px);
+    }
+
+    .btn-back {
+        display: block;
+        text-align: center;
+        margin-top: 20px;
+        text-decoration: none;
+        color: #888;
+        font-size: 0.9rem;
+    }
+</style>
+
+<div class="permissions-container">
+    <div class="card-permissions">
+        
+        <div class="header-admin">
+            <div style="font-size: 3rem;">🔐</div>
+            <h2>Configurar Permisos</h2>
+            <p>Editando acceso para: <b>{{ cajero[1] }}</b></p>
+        </div>
+
+        <form method="POST">
+            
+            <!-- VENDER -->
+            <div class="permiso-row">
+                <div class="permiso-info">
+                    <span>💰</span>
+                    <label class="permiso-label" for="vender">Puede vender</label>
+                </div>
+                <label class="switch">
+                    <input type="checkbox" id="vender" name="vender" {% if cajero[4] == 1 %}checked{% endif %}>
+                    <span class="slider"></span>
+                </label>
+            </div>
+
+            <!-- PEDIDOS -->
+            <div class="permiso-row">
+                <div class="permiso-info">
+                    <span>📦</span>
+                    <label class="permiso-label" for="pedidos">Ver pedidos</label>
+                </div>
+                <label class="switch">
+                    <input type="checkbox" id="pedidos" name="pedidos" {% if cajero[5] == 1 %}checked{% endif %}>
+                    <span class="slider"></span>
+                </label>
+            </div>
+
+            <!-- REPORTES -->
+            <div class="permiso-row">
+                <div class="permiso-info">
+                    <span>📊</span>
+                    <label class="permiso-label" for="reportes">Ver reportes</label>
+                </div>
+                <label class="switch">
+                    <input type="checkbox" id="reportes" name="reportes" {% if cajero[6] == 1 %}checked{% endif %}>
+                    <span class="slider"></span>
+                </label>
+            </div>
+
+            <!-- STOCK -->
+            <div class="permiso-row">
+                <div class="permiso-info">
+                    <span>📉</span>
+                    <label class="permiso-label" for="stock">Ver stock</label>
+                </div>
+                <label class="switch">
+                    <input type="checkbox" id="stock" name="stock" {% if cajero[7] == 1 %}checked{% endif %}>
+                    <span class="slider"></span>
+                </label>
+            </div>
+
+            <!-- AGREGAR PRODUCTOS -->
+            <div class="permiso-row">
+                <div class="permiso-info">
+                    <span>➕</span>
+                    <label class="permiso-label" for="agregar_productos">Agregar productos</label>
+                </div>
+                <label class="switch">
+                    <input type="checkbox" id="agregar_productos" name="agregar_productos" {% if cajero[8] == 1 %}checked{% endif %}>
+                    <span class="slider"></span>
+                </label>
+            </div>
+
+            <button type="submit" class="btn-save">💾 Guardar Cambios</button>
+        </form>
+    </div>
+
+    <a href="/dashboard" class="btn-back">⬅ Volver al Panel</a>
+</div>
 
 {% endblock %}
