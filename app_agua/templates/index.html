@@ -4,88 +4,108 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="/static/style.css">
     <title>RINPA SRL-EN DESARROLLO</title>
+    <!-- Agregamos Google Fonts para mejorar la estética -->
+    <link href="https://googleapis.com" rel="stylesheet">
 </head>
 
 <body class="home">
 
-<!-- 🖼️ FONDO -->
+<!-- 🖼️ HERO SECTION -->
 <div class="hero">
-    
-    <!-- 🎥 VIDEO DE FONDO -->
     <video autoplay muted loop playsinline class="hero-video">
         <source src="/static/agua.mp4" type="video/mp4">
     </video>
 
     <div class="overlay"></div>
 
-    <!-- HEADER -->
     <header class="hero-header">
         💧 RINPA SRL EN DESARROLLO
     </header>
 
-    <!-- CONTENIDO -->
     <div class="hero-content">
-
         <h1>RINPA SRL</h1>
         <p>Pedí agua fácil y rápido desde tu celular</p>
 
         <div class="actions">
-
+            <!-- BOTÓN TIENDA ONLINE RESALTADO -->
+            <a href="/tienda" class="btn btn-tienda">🛒 TIENDA ONLINE</a>
+            <hr style="opacity: 0.3; margin: 20px 0;">
+            
             <a href="/registro" class="btn">📝 Registrarse</a>
+            <a href="/login_cliente" class="btn secondary">👤 Ingresar cliente</a>
             
+            <div class="admin-access">
+                <a href="/login_cajero" class="btn outline">🔐 Acceso especial</a>
+                <a href="/login" class="btn outline">🔐 Admin</a>
+            </div>
+        </div>
+    </div>
 
-            <a href="/login_cliente" class="btn secondary">
-                👤 Ingresar cliente
-            </a>
-            
-             <a href="/login_cajero" class="btn outline">
-                🔐 Acceso especial
-            </a>
+    <div class="waves">
+        <svg viewBox="0 0 1200 120" preserveAspectRatio="none"><path d="M0,60 C150,120 350,0 600,60 C850,120 1050,0 1200,60 L1200,120 L0,120 Z"></path></svg>
+        <svg viewBox="0 0 1200 120" preserveAspectRatio="none"><path d="M0,40 C200,100 400,0 600,40 C800,80 1000,20 1200,60 L1200,120 L0,120 Z"></path></svg>
+    </div>
+</div>
 
-            <a href="/login" class="btn outline">
-                🔐 Admin
-            </a>
-            
+<!-- 📦 SECCIÓN DE PRODUCTOS DESTACADOS -->
+<section class="productos-destacados">
+    <h2 class="section-title">Nuestros Productos</h2>
+    <div class="productos-grid">
+        
+        <!-- Recuadro Producto 1 -->
+        <div class="producto-card">
+            <div class="producto-icon">💧</div>
+            <h3>Bidón 20 Litros</h3>
+            <p>Agua purificada de máxima calidad para tu hogar.</p>
+            <span class="price">$5.000</span>
+            <a href="/tienda" class="btn-buy">Comprar</a>
+        </div>
 
+        <!-- Recuadro Producto 2 -->
+        <div class="producto-card">
+            <div class="producto-icon">♻️</div>
+            <h3>Bidón 12 Litros</h3>
+            <p>El tamaño justo para tu dispenser frío/calor.</p>
+            <span class="price">$3.500</span>
+            <a href="/tienda" class="btn-buy">Comprar</a>
+        </div>
+
+        <!-- Recuadro Producto 3 -->
+        <div class="producto-card">
+            <div class="producto-icon">🌊</div>
+            <h3>Pack Botellas 500ml</h3>
+            <p>Pack de 12 unidades, ideal para eventos o viajes.</p>
+            <span class="price">$4.200</span>
+            <a href="/tienda" class="btn-buy">Comprar</a>
         </div>
 
     </div>
-    <!-- 🌊 OLAS -->
-    <div class="waves">
-        <svg viewBox="0 0 1200 120" preserveAspectRatio="none">
-            <path d="M0,60 C150,120 350,0 600,60 C850,120 1050,0 1200,60 L1200,120 L0,120 Z"></path>
-        </svg>
+</section>
 
-        <svg viewBox="0 0 1200 120" preserveAspectRatio="none">
-            <path d="M0,40 C200,100 400,0 600,40 C800,80 1000,20 1200,60 L1200,120 L0,120 Z"></path>
-        </svg>
-    </div>
-</div>
 <!-- 📞 FOOTER CONTACTO -->
 <footer class="footer-contacto">
     <div class="footer-box">
         <h3>📞 Contacto</h3>
-        <p>📱 Tel: +54 9 2664 XXX XXX</p>
+        <p>📱 Tel: +54 9 2664 255049</p>
         <p>📧 Email: DESARROLLO@gmail.com</p>
     </div>
 
     <div class="footer-box">
         <h3>🏠 SAN LUIS CAPITAL </h3>
         <p>San Luis, Argentina</p>
-        <p>SAN LUIS / Calle: 27  </p>
+        <p>Calle: 27, San Luis</p>
     </div>
 
     <div class="footer-box">
         <h3>📍 Ubicación</h3>
-        <a href="https://www.google.com/maps" target="_blank">
+        <a href="https://www.google.com/maps" target="_blank" class="map-link">
             Abrir en Google Maps
         </a>
     </div>
 </footer>
+
 <!-- 🔘 BOTÓN WHATSAPP -->
-<a href="https://wa.me/5492664255049?text=Hola%20quiero%20pedir%20agua%20💧"
-   target="_blank"
-   class="whatsapp-float">
+<a href="https://wa.me/5492664255049?text=Hola%20quiero%20pedir%20agua%20💧" target="_blank" class="whatsapp-float">
     <img src="/static/whatsapp.png" alt="WhatsApp">
 </a>
 
