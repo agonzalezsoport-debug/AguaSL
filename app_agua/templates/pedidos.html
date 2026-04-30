@@ -1,37 +1,52 @@
+
 {% extends "base.html" %}
+
 {% block content %}
+
 <div class="container">
+
     <h2>📦 Gestión de Pedidos</h2>
 
     {% for p in pedidos %}
-    <div class="card" style="border-left: 5px solid #ddd; margin-bottom: 15px; padding: 15px; background: #fff;">
-        <strong>Pedido #{{ p[0] }}</strong><br>
-        <b>👤 Cliente:</b> {{ p[1] }}<br>
-        <b>📅 Fecha:</b> {{ p[3] }}<br>
+    <div class="card">
 
-        <!-- BOTÓN MAPA PARA ADMIN -->
-        {% if p[5] and p[6] %}
-        <div style="margin: 15px 0;">
-            <a href="https://google.com{{ p[5] }},{{ p[6] }}" 
-               target="_blank" rel="noopener noreferrer"
-               style="background: #4285F4; color: white; display: inline-flex; align-items: center; gap: 8px; text-decoration: none; padding: 10px; border-radius: 5px; font-weight: bold; font-size: 0.9em;">
-                📍 VER UBICACIÓN EN MAPA
+        <!-- INFO DEL PEDIDO -->
+        <strong>Pedido #{{p[0]}}</strong><br>
+        Cliente: {{p[1]}}<br>
+        Promo: {{p[2]}}<br>
+        Fecha: {{p[3]}}<br><br>
+
+        <!-- ESTADO ACTUAL -->
+        <span class="estado {{p[4]|lower|replace(' ', '')}}">
+            {{p[4]}}
+        </span>
+
+        <br><br>
+
+        <!-- BOTONES PARA CAMBIAR ESTADO -->
+        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+
+            <a href="/pedido/estado/{{p[0]}}/pendiente" class="btn">
+                Pendiente
             </a>
-        </div>
-        {% else %}
-        <p style="color: #888; font-size: 0.85em; margin: 10px 0;"><i>Ubicación GPS no proporcionada</i></p>
-        {% endif %}
 
-        <div style="margin-bottom: 10px;">
-            <span class="estado {{ p[4]|lower|replace(' ', '') }}">{{ p[4] }}</span>
+            <a href="/pedido/estado/{{p[0]}}/enproceso" class="btn">
+                En proceso
+            </a>
+
+            <a href="/pedido/estado/{{p[0]}}/entregado" class="btn">
+                Entregado
+            </a>
+
+            <a href="/pedido/estado/{{p[0]}}/cancelado" class="btn">
+                Cancelar
+            </a>
+
         </div>
 
-        <div style="display:flex; gap:5px; flex-wrap:wrap;">
-            <a href="/pedido/estado/{{ p[0] }}/pendiente" class="btn small">Pendiente</a>
-            <a href="/pedido/estado/{{ p[0] }}/enproceso" class="btn small">Proceso</a>
-            <a href="/pedido/estado/{{ p[0] }}/entregado" class="btn small success" style="background:#28a745; color:white;">Entregado</a>
-        </div>
     </div>
     {% endfor %}
+
 </div>
+
 {% endblock %}
