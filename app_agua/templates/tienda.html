@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="tienda-container" style="max-width: 1200px; margin: auto; padding: 20px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px;">
+        <h2>🛒 Tienda Online</h2>
+        <a href="/carrito" class="btn-carrito-fijo">
+            <span>Ver mi pedido</span> 🛍️
+        </a>
+    </div>
+
+    <!-- Filtros por Departamento -->
+    <div class="filtros" style="margin-bottom: 25px; display: flex; gap: 10px; overflow-x: auto; padding-bottom: 10px;">
+        <button class="badge active">Todos</button>
+        <button class="badge">Agua</button>
+        <button class="badge">Sodas</button>
+        <button class="badge">Accesorios</button>
+    </div>
+
+    <div class="productos-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 25px;">
+        {% for p in productos %}
+        <div class="producto-card-tienda" style="background: white; border-radius: 20px; overflow: hidden; box-shadow: 0 10px 20px rgba(0,0,0,0.05); border: 1px solid #f0f0f0; transition: 0.3s;">
+            <div class="foto-placeholder" style="height: 180px; background: #e7f3ff; display: flex; align-items: center; justify-content: center; font-size: 4rem;">
+                {% if 'Agua' in p[1] %}💧{% elif 'Soda' in p[1] %}🍾{% else %}📦{% endif %}
+            </div>
+            
+            <div style="padding: 20px;">
+                <span style="font-size: 0.8rem; color: #007bff; font-weight: bold; text-transform: uppercase;">{{ p[5] }}</span>
+                <h3 style="margin: 5px 0; color: #333;">{{ p[1] }}</h3>
+                <p style="color: #888; font-size: 0.9rem;">Presentación: {{ p[4] }} Litros</p>
+                
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 20px;">
+                    <span style="font-size: 1.5rem; font-weight: 800; color: #28a745;">${{ "%.2f"|format(p[2]) }}</span>
+                    
+                    <form action="/carrito/agregar" method="POST" style="margin: 0;">
+                        <input type="hidden" name="id" value="{{ p[0] }}">
+                        <button type="submit" class="btn-add" style="background: #007bff; color: white; border: none; padding: 10px 20px; border-radius: 12px; font-weight: bold; cursor: pointer;">
+                            ➕ Agregar
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<style>
+    .producto-card-tienda:hover {
+        transform: translateY(-10px);
+        box-shadow: 0 15px 30px rgba(0,0,0,0.1);
+        border-color: #007bff;
+    }
+    .btn-carrito-fijo {
+        background: #333;
+        color: white;
+        padding: 12px 25px;
+        border-radius: 50px;
+        text-decoration: none;
+        font-weight: bold;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+    }
+    .badge {
+        background: white;
+        border: 1px solid #ddd;
+        padding: 8px 20px;
+        border-radius: 50px;
+        cursor: pointer;
+        white-space: nowrap;
+    }
+    .badge.active {
+        background: #007bff;
+        color: white;
+        border-color: #007bff;
+    }
+</style>
+
+{% endblock %}
