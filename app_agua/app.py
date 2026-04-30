@@ -232,20 +232,6 @@ def save_offline(tabla, accion, data):
     con.commit()
     con.close()
 import requests
-def obtener_caja_abierta():
-    usuario = session.get("usuario") # O "nombre_cajero"
-    con = get_db()
-    cur = con.cursor()
-    
-    # Buscamos una caja cuyo estado sea 'ABIERTA'
-    # Si usas SQLite, recordá que get_db() ya maneja la conexión
-    ejecutar(cur, con, "SELECT * FROM caja WHERE estado = 'ABIERTA' LIMIT 1")
-    caja = cur.fetchone()
-    con.close()
-    
-    return caja # Retorna la fila si hay una abierta, sino None
-
-
 
 def internet_ok():
     try:
@@ -373,7 +359,6 @@ def sync_venta_to_cloud(venta_id, fecha, total, recargo, descuento, total_final,
             item_fixed = dict(item)
             item_fixed["venta_id"] = venta_id
             save_offline("venta_items", "insert", item_fixed)
-            
             
 
             
@@ -1117,7 +1102,6 @@ def mis_pedidos():
     )
 
 # ================== CREAR PEDIDO ==================
-# ================== CREAR PEDIDO (CON GPS) ==================
 @app.route("/pedidos_cliente/agregar", methods=["POST"])
 def agregar_pedido_cliente():
     if not session.get("cliente_id"):
@@ -1125,71 +1109,67 @@ def agregar_pedido_cliente():
 
     promo_id = request.form.get("promo_id")
     fecha = request.form.get("fecha") or datetime.now().strftime("%Y-%m-%d")
-    lat = request.form.get("latitud")
-    lng = request.form.get("longitud")
+
+    if not promo_id:
+        return "❌ Debes seleccionar una promo"
 
     con = get_db_local()
     cur = con.cursor()
 
     try:
+        # Usamos un ID único para evitar choques en la nube
         pedido_id = str(uuid.uuid4()) 
         cur.execute("""
-            INSERT INTO pedidos (id, cliente_id, promo_id, fecha, estado, latitud, longitud)
-            VALUES (?, ?, ?, ?, 'pendiente', ?, ?)
-        """, (pedido_id, session["cliente_id"], promo_id, fecha, lat, lng))
+            INSERT INTO pedidos (id, cliente_id, promo_id, fecha, estado)
+            VALUES (?, ?, ?, ?, 'pendiente')
+        """, (pedido_id, session["cliente_id"], promo_id, fecha))
         con.commit()
 
-        # 🔥 SYNC
+        # 🔥 SYNC: A la cola
         save_offline("pedidos", "insert", {
             "id": pedido_id,
             "cliente_id": session["cliente_id"],
             "promo_id": promo_id,
             "fecha": fecha,
-            "estado": "pendiente",
-            "latitud": lat,
-            "longitud": lng
+            "estado": "pendiente"
         })
+
     except Exception as e:
         con.rollback()
-        return f"❌ Error: {e}"
+        return f"❌ Error al crear pedido: {e}"
     finally:
         con.close()
 
     return redirect("/mis_pedidos")
 
 
-
-
-# ================== PEDIDOS ADMIN (CON GPS) ==================
+# ================== PEDIDOS ADMIN ==================
 @app.route("/pedidos")
 def pedidos():
-    # Nota: puse la validación de admin/cajero como la tenías
-    if not session.get("admin") and not session.get("permisos"):
-        return "❌ No tenés permiso"
+    if not session.get("admin") and not session.get("puede_agregar_productos"):
+        return "❌ No tenés permiso para agregar productos"
 
     con = get_db()
     cur = con.cursor()
 
     try:
-        # Agregamos p.latitud y p.longitud a la consulta
         ejecutar(cur, con, """
-            SELECT p.id, u.nombre, pr.nombre, p.fecha, p.estado, p.latitud, p.longitud
+            SELECT p.id, u.nombre, pr.nombre, p.fecha, p.estado
             FROM pedidos p
             JOIN usuarios u ON p.cliente_id = u.id
             JOIN promos pr ON p.promo_id = pr.id
-            ORDER BY p.fecha DESC, p.id DESC
+            ORDER BY p.id DESC
         """)
 
         pedidos = cur.fetchall()
 
     except Exception as e:
-        if con: con.close()
+        con.close()
         return f"❌ Error al cargar pedidos: {e}"
 
     con.close()
 
     return render_template("pedidos.html", pedidos=pedidos)
-
 @app.route("/permisos_cajero/<int:id>", methods=["GET", "POST"])
 def permisos_cajero(id):
     if not session.get("admin"):
@@ -2389,70 +2369,58 @@ def dashboard_cajero():
     if not session.get("cajero_id"):
         return redirect("/login_cajero")
 
+    # 1. LEER CAJA SIEMPRE LOCAL (Evita que el monto desaparezca por lag de internet)
     con_local = get_db_local()
     cur_local = con_local.cursor()
 
-    # --- NUEVA LÓGICA DE AUTODETECCIÓN ---
-    # Buscamos si este cajero tiene alguna caja con estado 'ABIERTA' 
-    # sin importar si está en la sesión o no.
-    cur_local.execute("""
-        SELECT id, monto_inicial, estado 
-        FROM caja 
-        WHERE cajero = ? AND estado = 'ABIERTA' 
-        LIMIT 1
-    """, (session.get("nombre_cajero"),))
-    
-    caja = cur_local.fetchone()
-
+    caja_id = session.get("caja_id")
     caja_abierta = False
     apertura = 0
     total_ventas = 0
     solo_efectivo = 0
     ventas_por_metodo = []
 
-    if caja:
-        # Si la encontramos, restauramos los datos y el ID en la sesión
-        caja_abierta = True
-        caja_id = caja["id"]
-        session["caja_id"] = caja_id  # Re-activamos el ID para las ventas
-        apertura = float(caja["monto_inicial"] or 0)
+    if caja_id:
+        # Buscamos la caja en la base local
+        cur_local.execute("SELECT monto_inicial, estado FROM caja WHERE id = ?", (caja_id,))
+        caja = cur_local.fetchone()
 
-        # 1. Sumar total general
-        cur_local.execute("SELECT COALESCE(SUM(total_final), 0) FROM ventas WHERE caja_id = ?", (caja_id,))
-        total_ventas = float(cur_local.fetchone()[0] or 0)
+        if caja and caja["estado"] == "ABIERTA":
+            caja_abierta = True
+            apertura = float(caja["monto_inicial"] or 0)
 
-        # 2. Sumar SOLO EFECTIVO
-        cur_local.execute("""
-            SELECT COALESCE(SUM(total_final), 0) 
-            FROM ventas 
-            WHERE caja_id = ? AND UPPER(metodo_pago) = 'EFECTIVO'
-        """, (caja_id,))
-        solo_efectivo = float(cur_local.fetchone()[0] or 0)
+            # Sumar total general de ventas de esta caja
+            cur_local.execute("SELECT COALESCE(SUM(total_final), 0) FROM ventas WHERE caja_id = ?", (caja_id,))
+            total_ventas = float(cur_local.fetchone()[0] or 0)
 
-        # 3. Métodos detallados
-        cur_local.execute("""
-            SELECT metodo_pago, SUM(total_final) 
-            FROM ventas 
-            WHERE caja_id = ? 
-            GROUP BY metodo_pago
-        """, (caja_id,))
-        ventas_por_metodo = cur_local.fetchall() 
-    else:
-        # Si no hay ninguna caja 'ABIERTA' en DB, limpiamos la sesión
-        session.pop("caja_id", None)
+            # Sumar SOLO EFECTIVO (Para el control físico)
+            cur_local.execute("""
+                SELECT COALESCE(SUM(total_final), 0) 
+                FROM ventas 
+                WHERE caja_id = ? AND UPPER(metodo_pago) = 'EFECTIVO'
+            """, (caja_id,))
+            solo_efectivo = float(cur_local.fetchone()[0] or 0)
+
+            # TRAER TODOS LOS MÉTODOS DETALLADOS (Tarjeta, Transferencia, etc.)
+            cur_local.execute("""
+                SELECT metodo_pago, SUM(total_final) 
+                FROM ventas 
+                WHERE caja_id = ? 
+                GROUP BY metodo_pago
+            """, (caja_id,))
+            ventas_por_metodo = cur_local.fetchall() 
+        else:
+            session.pop("caja_id", None)
     
     con_local.close()
 
-    # 2. PRODUCTOS Y PEDIDOS
+    # 2. PRODUCTOS Y PEDIDOS (Pueden venir de la nube/local según get_db)
     con = get_db()
     cur = con.cursor()
     ejecutar(cur, con, "SELECT COUNT(*) FROM productos")
-    res_prod = cur.fetchone()
-    productos = res_prod[0] if res_prod else 0
-
+    productos = cur.fetchone()[0]
     ejecutar(cur, con, "SELECT COUNT(*) FROM pedidos")
-    res_ped = cur.fetchone()
-    pedidos = res_ped[0] if res_ped else 0
+    pedidos = cur.fetchone()[0]
     con.close()
 
     return render_template(
@@ -2466,7 +2434,6 @@ def dashboard_cajero():
         solo_efectivo=solo_efectivo,
         ventas_por_metodo=ventas_por_metodo
     )
-
 
 @app.route("/promos/eliminar/<id>", methods=["POST"])
 def eliminar_promo(id):
