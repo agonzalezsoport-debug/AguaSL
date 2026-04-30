@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="container" style="max-width: 600px; margin: auto; padding: 20px;">
+    <h2 style="text-align: center; margin-bottom: 30px;">🛍️ Mi Pedido</h2>
+
+    {% if carrito %}
+        <div class="card" style="background: white; border-radius: 20px; padding: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.05);">
+            {% for item in carrito %}
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 15px 0; border-bottom: 1px solid #eee;">
+                <div>
+                    <strong style="font-size: 1.1em; color: #333;">{{ item.nombre }}</strong><br>
+                    <span style="color: #888;">${{ "%.2f"|format(item.precio) }} x {{ item.cantidad }}</span>
+                </div>
+                <strong style="color: #28a745;">${{ "%.2f"|format(item.precio * item.cantidad) }}</strong>
+            </div>
+            {% endfor %}
+
+            <div style="margin-top: 25px; padding-top: 20px; border-top: 2px solid #f0f0f0; display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-size: 1.2em; font-weight: bold; color: #555;">Total a pagar:</span>
+                <span style="font-size: 1.8em; font-weight: 800; color: #007bff;">${{ "%.2f"|format(total) }}</span>
+            </div>
+        </div>
+
+        <div style="margin-top: 30px; display: flex; flex-direction: column; gap: 15px;">
+            <!-- Formulario para confirmar el pedido (usando tu lógica de GPS anterior) -->
+            <form action="/pedidos_cliente/agregar" method="POST">
+                <!-- Aquí podrías adaptar para que el pedido guarde múltiples items o el total -->
+                <input type="hidden" name="promo_id" value="PEDIDO_TIENDA"> 
+                <button type="submit" class="btn success" style="width: 100%; padding: 18px; font-size: 1.2em; font-weight: bold; border-radius: 15px; border: none; background: #28a745; color: white; cursor: pointer;">
+                    🚀 Confirmar y Enviar Pedido
+                </button>
+            </form>
+
+            <a href="/carrito/vaciar" style="text-align: center; color: #dc3545; text-decoration: none; font-weight: bold;">🗑️ Vaciar Carrito</a>
+            <a href="/tienda" style="text-align: center; color: #666; text-decoration: none;">⬅️ Seguir comprando</a>
+        </div>
+
+    {% else %}
+        <div style="text-align: center; padding: 50px 20px;">
+            <div style="font-size: 5rem; margin-bottom: 20px;">🛒</div>
+            <h3>Tu carrito está vacío</h3>
+            <p style="color: #888;">¡Agregá algunos productos de nuestra tienda!</p>
+            <a href="/tienda" class="btn" style="display: inline-block; margin-top: 20px; background: #007bff; color: white; padding: 12px 30px; border-radius: 50px; text-decoration: none; font-weight: bold;">Ir a la Tienda</a>
+        </div>
+    {% endif %}
+</div>
+
+{% endblock %}
