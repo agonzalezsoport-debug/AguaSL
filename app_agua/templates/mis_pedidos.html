@@ -1,106 +1,131 @@
 {% extends "base.html" %}
 {% block content %}
 
-<div class="container" style="max-width: 800px; margin: auto; padding: 20px;">
-    <h2>💧 Promos disponibles</h2>
+<!-- 1. RECURSOS DE MAPA -->
+<link rel="stylesheet" href="https://unpkg.com" />
+<style>
+    .map-container {
+        height: 250px !important;
+        width: 100%;
+        border: 2px solid #ddd;
+        border-radius: 10px;
+        margin: 10px 0;
+        background-color: #f0f0f0;
+        z-index: 1;
+    }
+    .card {
+        margin-bottom: 25px;
+        padding: 20px;
+        border-radius: 15px;
+        background: #fff;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    }
+</style>
 
+<div class="container" style="max-width: 800px; margin: auto; padding: 15px;">
+    <h2>💧 Promos disponibles</h2>
+    
     {% for p in promos %}
-    <div class="card" style="margin-bottom: 20px; padding: 15px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); background: #fff;">
+    <div class="card">
         <strong>{{ p[1] }}</strong>
         <div class="muted">{{ p[2] }}</div>
-        <div class="precio" style="font-weight: bold; color: #28a745; margin: 5px 0;">${{ p[3] }}</div>
+        <div class="precio" style="color: #28a745; font-weight: bold;">${{ p[3] }}</div>
 
         <form method="POST" action="/pedidos_cliente/agregar">
             <input type="hidden" name="promo_id" value="{{ p[0] }}">
-            
-            <!-- CAMPOS OCULTOS PARA LATITUD Y LONGITUD -->
             <input type="hidden" name="latitud" id="lat-{{ p[0] }}">
             <input type="hidden" name="longitud" id="lng-{{ p[0] }}">
 
-            <label style="display: block; margin-top: 10px;">📅 Fecha de entrega:</label>
-            <input type="date" name="fecha" required style="width: 100%; padding: 8px; margin-bottom: 10px; border-radius: 5px; border: 1px solid #ddd;">
+            <label>📅 Fecha de entrega:</label>
+            <input type="date" name="fecha" required style="width: 100%; padding: 10px; margin-bottom: 10px; border-radius: 8px;">
             
-            <!-- SECCIÓN GPS -->
-            <div style="margin-bottom: 15px; padding: 10px; border-radius: 8px; border: 1px dashed #007bff; text-align: center; background: #fcfcfc;">
-                <button type="button" onclick="obtenerGPS('{{ p[0] }}')" id="btn-{{ p[0] }}" 
-                        style="width: 100%; padding: 10px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold;">
-                    📍 Señalar mi ubicación (GPS)
+            <div style="border-top: 1px solid #eee; padding-top: 10px;">
+                <b>📍 Ubicación de entrega:</b>
+                
+                <!-- CONTENEDOR DEL MAPA (ID único usando p[0]) -->
+                <div id="map-{{ p[0] }}" class="map-container"></div>
+                
+                <button type="button" onclick="localizarCelu('{{ p[0] }}')" class="btn info" style="width: 100%; margin-top: 5px; background: #28a745; color: white;">
+                    🛰️ Usar mi GPS actual
                 </button>
                 
-                <p id="status-{{ p[0] }}" style="font-size: 0.85em; margin: 8px 0; color: #666;"></p>
-                
-                <!-- ESTE ENLACE EVITA EL ERROR #BLOCKED -->
-                <div id="div-mapa-{{ p[0] }}" style="display:none; margin-top:5px;">
-                    <a id="link-mapa-{{ p[0] }}" href="#" target="_blank" rel="noopener noreferrer" 
-                       style="color: #007bff; font-size: 0.9em; font-weight: bold; text-decoration: underline;">
-                        🗺️ Ver mi ubicación en Google Maps
-                    </a>
-                </div>
+                <p id="status-{{ p[0] }}" style="font-size: 0.8em; text-align: center; color: #666; margin-top: 5px;">
+                    Localizando... espera un momento
+                </p>
             </div>
 
-            <button type="submit" class="btn success" style="width: 100%; padding: 12px; font-weight: bold; background: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer;">
+            <button type="submit" class="btn success" style="width: 100%; padding: 15px; margin-top: 15px; font-weight: bold;">
                 🚀 Confirmar Pedido
             </button>
         </form>
     </div>
     {% endfor %}
-
-    <hr>
-    <h2>📦 Mis pedidos</h2>
-    {% for p in pedidos %}
-    <div class="card" style="margin-bottom: 10px; padding: 15px; border-radius: 8px; background: #fdfdfd; border-left: 5px solid #007bff;">
-        <div>
-            <strong>{{ p[1] }}</strong>
-            <div class="muted">{{ p[2] }}</div>
-        </div>
-        <span class="estado {{ p[3]|lower|replace(' ', '') }}" style="padding: 3px 8px; border-radius: 4px; font-size: 0.8em; font-weight: bold;">
-            {{ p[3] }}
-        </span>
-    </div>
-    {% endfor %}
 </div>
 
+<!-- 2. SCRIPTS -->
+<script src="https://unpkg.com"></script>
 <script>
-function obtenerGPS(id) {
+let mapas = {}; 
+
+function inicializarMapa(id) {
+    if (mapas[id]) return;
+
+    const centroIni = [-34.6037, -58.3816];
+    
+    // Creamos el objeto del mapa
+    mapas[id] = L.map('map-' + id).setView(centroIni, 13);
+    
+    // Agregamos las calles
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap'
+    }).addTo(mapas[id]);
+    
+    mapas[id].marcador = L.marker(centroIni, {draggable: true}).addTo(mapas[id]);
+
+    mapas[id].marcador.on('dragend', function(e) {
+        let pos = e.target.getLatLng();
+        document.getElementById('lat-' + id).value = pos.lat;
+        document.getElementById('long-' + id).value = pos.lng;
+        document.getElementById('status-' + id).innerText = "✅ Ubicación marcada manualmente";
+    });
+
+    // 🔥 EL TRUCO FINAL: Re-calcula el tamaño cada 1 segundo 
+    // para evitar que se quede blanco si la carga es lenta
+    let checkSize = setInterval(() => {
+        if (mapas[id]) mapas[id].invalidateSize();
+    }, 1000);
+    
+    // Frenamos el chequeo después de 5 segundos para no consumir batería
+    setTimeout(() => clearInterval(checkSize), 5000);
+}
+
+function localizarCelu(id) {
     const status = document.getElementById('status-' + id);
-    const btn = document.getElementById('btn-' + id);
-    const divMapa = document.getElementById('div-mapa-' + id);
-    const linkMapa = document.getElementById('link-mapa-' + id);
-
-    status.innerText = "🛰️ Localizando... (espera 5 seg)";
-    status.style.color = "#333";
-
-    // Configuramos para que no sea tan exigente y funcione en PC
-    const opciones = {
-        enableHighAccuracy: false, 
-        timeout: 10000,           
-        maximumAge: 0
-    };
+    status.innerText = "🛰️ Buscando señal GPS...";
 
     navigator.geolocation.getCurrentPosition(function(pos) {
         const lat = pos.coords.latitude;
         const lng = pos.coords.longitude;
 
-        // Guardamos en los inputs del formulario
         document.getElementById('lat-' + id).value = lat;
         document.getElementById('long-' + id).value = lng;
         
-        status.innerText = "✅ Ubicación fijada correctamente";
+        mapas[id].setView([lat, lng], 17);
+        mapas[id].marcador.setLatLng([lat, lng]);
+        
+        status.innerText = "✅ Ubicación fijada por GPS";
         status.style.color = "green";
-        btn.style.background = "#28a745";
-        btn.innerText = "📍 Ubicación capturada";
-
-        // GENERAMOS EL LINK REAL PARA QUE EL USUARIO HAGA CLIC
-        const urlFinal = "https://google.com" + lat + "," + lng;
-        linkMapa.setAttribute('href', urlFinal);
-        divMapa.style.display = "block";
-
-    }, function(error) {
-        console.error("Error GPS:", error);
-        if(error.code == 1) status.innerText = "❌ Error: Habilita el GPS en el candado del navegador.";
-        else status.innerText = "❌ No se pudo obtener la ubicación. Intenta de nuevo.";
+    }, function() {
+        status.innerText = "❌ GPS falló o está desactivado. Marcá el mapa a mano.";
         status.style.color = "red";
-    }, opciones);
+    }, {enableHighAccuracy: true, timeout: 10000});
 }
+
+// Inicializar mapas apenas carga la página
+window.onload = function() {
+    {% for p in promos %}
+        inicializarMapa('{{ p[0] }}');
+    {% endfor %}
+};
 </script>
 {% endblock %}
