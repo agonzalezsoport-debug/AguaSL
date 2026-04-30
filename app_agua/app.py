@@ -402,6 +402,28 @@ def agregar_cliente():
 
     # 🔁 volver a la lista
     return redirect("/clientes")
+@app.route("/eliminar_cajero/<id>") # Fijate que el nombre sea igual al del HTML
+def eliminar_cajero(id):
+    if not session.get("admin"):
+        return "❌ No tenés permiso", 403
+
+    con = get_db_local()
+    cur = con.cursor()
+    
+    try:
+        cur.execute("DELETE FROM cajeros WHERE id = ?", (id,))
+        con.commit()
+        
+        # Opcional: También borrarlo de la nube si usas sync
+        # save_offline("cajeros", "delete", {"id": id})
+        
+    except Exception as e:
+        return f"❌ Error al eliminar: {e}"
+    finally:
+        con.close()
+
+    return redirect("/cajeros") # Asegurate que esta ruta sea la que muestra la tabla
+
 
 
 @app.route("/clientes/eliminar/<int:id>", methods=["POST"])
