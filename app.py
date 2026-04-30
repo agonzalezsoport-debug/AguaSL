@@ -363,9 +363,70 @@ def sync_venta_to_cloud(venta_id, fecha, total, recargo, descuento, total_final,
 
             
 # ================== INDEX ==================
+# --- AGREGAR AL CARRITO ---
+@app.route("/carrito/agregar", methods=["POST"])
+def agregar_al_carrito():
+    producto_id = request.form.get("id")
+    
+    # Buscamos el producto en la DB para tener precio y nombre
+    con = get_db()
+    cur = con.cursor()
+    ejecutar(cur, con, "SELECT id, descripcion, precio FROM productos WHERE id = %s", (producto_id,))
+    p = cur.fetchone()
+    con.close()
+
+    if p:
+        carrito = session.get("carrito_cliente", [])
+        
+        # Si el producto ya está, sumamos cantidad
+        encontrado = False
+        for item in carrito:
+            if item['id'] == p[0]:
+                item['cantidad'] += 1
+                encontrado = True
+                break
+        
+        if not encontrado:
+            carrito.append({
+                'id': p[0],
+                'nombre': p[1],
+                'precio': float(p[2]),
+                'cantidad': 1
+            })
+        
+        session["carrito_cliente"] = carrito
+        session.modified = True
+        
+    return redirect("/tienda")
+
+# --- VER EL CARRITO ---
+@app.route("/carrito")
+def ver_carrito():
+    carrito = session.get("carrito_cliente", [])
+    total = sum(item['precio'] * item['cantidad'] for item in carrito)
+    return render_template("carrito.html", carrito=carrito, total=total)
+
+# --- VACIAR CARRITO ---
+@app.route("/carrito/vaciar")
+def vaciar_carrito():
+    session.pop("carrito_cliente", None)
+    return redirect("/tienda")
+
 @app.route("/")
 def index():
     return render_template("index.html")
+@app.route("/tienda")
+def tienda():
+    con = get_db() # Usa tu función que detecta si es Cloud o Local
+    cur = con.cursor()
+    
+    # Traemos solo los productos que tienen stock
+    ejecutar(cur, con, "SELECT id, descripcion, precio, stock, litros, departamento FROM productos WHERE stock > 0")
+    productos = cur.fetchall()
+    con.close()
+    
+    return render_template("tienda.html", productos=productos)
+
 @app.route("/clientes/agregar", methods=["POST"])
 def agregar_cliente():
     if not session.get("admin"):
