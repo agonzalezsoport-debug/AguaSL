@@ -1,29 +1,152 @@
-
 {% extends "base.html" %}
 
 {% block content %}
 
-<h2>👨‍💼 Cajeros</h2>
+<style>
+    .admin-container {
+        max-width: 900px;
+        margin: 30px auto;
+        padding: 20px;
+    }
 
-<table border="1" style="width:100%;text-align:center;">
-    <tr>
-        <th>ID</th>
-        <th>Usuario</th>
-        <th>Rol</th>
-        <th>Acción</th>
-    </tr>
+    .card-table {
+        background: white;
+        border-radius: 20px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+        padding: 25px;
+        overflow-x: auto; /* Para que se vea bien en celulares */
+    }
 
-    {% for c in cajeros %}
-    <tr>
-        <td>{{ c[0] }}</td>
-        <td>{{ c[1] }}</td>
-        <td>{{ c[2] }}</td>
-        <td>
-            <a href="/eliminar_cajero/{{ c[0] }}">❌</a>
-            <a href="/permisos_cajero/{{ c[0] }}">🔐 Permisos</a>
-        </td>
-    </tr>
-    {% endfor %}
-</table>
+    .header-section {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 25px;
+    }
+
+    .header-section h2 { margin: 0; color: #333; display: flex; align-items: center; gap: 10px; }
+
+    /* Estilo de la Tabla */
+    .modern-table {
+        width: 100%;
+        border-collapse: collapse;
+        text-align: left;
+    }
+
+    .modern-table th {
+        padding: 15px;
+        background: #f8f9fa;
+        color: #666;
+        font-weight: 600;
+        text-transform: uppercase;
+        font-size: 0.8rem;
+        border-bottom: 2px solid #eee;
+    }
+
+    .modern-table td {
+        padding: 15px;
+        border-bottom: 1px solid #f0f0f0;
+        color: #444;
+        vertical-align: middle;
+    }
+
+    .modern-table tr:hover { background: #fafafa; }
+
+    /* Badges para el Rol */
+    .badge {
+        padding: 5px 12px;
+        border-radius: 20px;
+        font-size: 0.8rem;
+        font-weight: bold;
+        text-transform: uppercase;
+    }
+    .badge-admin { background: #e7f3ff; color: #007bff; }
+    .badge-cajero { background: #fff3e0; color: #fd7e14; }
+
+    /* Botones de Acción */
+    .action-btns { display: flex; gap: 10px; }
+
+    .btn-action {
+        padding: 8px 15px;
+        border-radius: 8px;
+        text-decoration: none;
+        font-size: 0.9rem;
+        font-weight: 600;
+        transition: 0.3s;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+    }
+
+    .btn-permisos { background: #f0f7ff; color: #007bff; border: 1px solid #d0e7ff; }
+    .btn-permisos:hover { background: #007bff; color: white; }
+
+    .btn-delete { background: #fff5f5; color: #dc3545; border: 1px solid #ffe3e3; }
+    .btn-delete:hover { background: #dc3545; color: white; }
+
+    .id-circle {
+        background: #eee;
+        width: 30px;
+        height: 30px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+        font-size: 0.8rem;
+        font-weight: bold;
+        color: #888;
+    }
+</style>
+
+<div class="admin-container">
+    
+    <div class="header-section">
+        <h2><span>👨‍💼</span> Gestión de Cajeros</h2>
+        <a href="/registro_cajero" class="btn-action btn-permisos" style="background: #28a745; color: white; border: none;">
+            ➕ Nuevo Cajero
+        </a>
+    </div>
+
+    <div class="card-table">
+        <table class="modern-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Usuario</th>
+                    <th>Rol</th>
+                    <th style="text-align: right;">Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for c in cajeros %}
+                <tr>
+                    <td><div class="id-circle">{{ c[0] }}</div></td>
+                    <td><strong>{{ c[1] }}</strong></td>
+                    <td>
+                        <span class="badge {% if c[2]|lower == 'admin' %}badge-admin{% else %}badge-cajero{% endif %}">
+                            {{ c[2] }}
+                        </span>
+                    </td>
+                    <td>
+                        <div class="action-btns" style="justify-content: flex-end;">
+                            <a href="/permisos_cajero/{{ c[0] }}" class="btn-action btn-permisos">
+                                🔐 Permisos
+                            </a>
+                            <a href="/eliminar_cajero/{{ c[0] }}" class="btn-action btn-delete" 
+                               onclick="return confirm('¿Estás seguro de eliminar a este cajero?')">
+                                🗑️
+                            </a>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div style="margin-top: 20px; text-align: center;">
+        <a href="/dashboard" style="text-decoration: none; color: #888; font-size: 0.9rem;">⬅ Volver al Panel Principal</a>
+    </div>
+</div>
 
 {% endblock %}
