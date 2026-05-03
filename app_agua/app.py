@@ -378,42 +378,6 @@ def sync_venta_to_cloud(venta_id, fecha, total, recargo, descuento, total_final,
             
 
             
-# ================== INDEX ==================
-# --- AGREGAR AL CARRITO ---
-@app.route("/carrito/agregar", methods=["POST"])
-def agregar_al_carrito():
-    producto_id = request.form.get("id")
-    
-    # Buscamos el producto en la DB para tener precio y nombre
-    con = get_db()
-    cur = con.cursor()
-    ejecutar(cur, con, "SELECT id, descripcion, precio FROM productos WHERE id = %s", (producto_id,))
-    p = cur.fetchone()
-    con.close()
-
-    if p:
-        carrito = session.get("carrito_cliente", [])
-        
-        # Si el producto ya está, sumamos cantidad
-        encontrado = False
-        for item in carrito:
-            if item['id'] == p[0]:
-                item['cantidad'] += 1
-                encontrado = True
-                break
-        
-        if not encontrado:
-            carrito.append({
-                'id': p[0],
-                'nombre': p[1],
-                'precio': float(p[2]),
-                'cantidad': 1
-            })
-        
-        session["carrito_cliente"] = carrito
-        session.modified = True
-        
-    return redirect("/tienda")
 
 # --- VER EL CARRITO ---
 @app.route("/carrito")
