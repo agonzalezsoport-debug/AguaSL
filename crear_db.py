@@ -65,7 +65,8 @@ CREATE TABLE IF NOT EXISTS productos (
     litros INTEGER,
     precio REAL,
     stock INTEGER DEFAULT 0,
-    fecha TEXT
+    fecha TEXT,
+    foto TEXT
 )
 """)
 
