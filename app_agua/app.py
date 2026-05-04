@@ -2678,17 +2678,53 @@ def stock():
 import threading
 threading.Thread(target=sync_worker, daemon=True).start()
 
+# =================================================IMIENTOS FINALES=================================================
+
+# 1. Función para inicializar la base de datos en la nube (Render) automáticamente
+def inicializar_nube():
+    if os.environ.get("RENDER"):
+        print("☁️ Verificando tablas en Supabase...")
+        try:
+            con = get_db_cloud()
+            cur = con.cursor()
+            
+            # Crear tabla usuarios si no existe (por si Supabase está vacío)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS usuarios (
+                    id SERIAL PRIMARY KEY,
+                    nombre TEXT UNIQUE NOT NULL,
+                    telefono TEXT,
+                    direccion TEXT,
+                    password TEXT NOT NULL
+                )
+            """)
+            
+            # Verificar si existe el admin
+            cur.execute("SELECT * FROM usuarios WHERE nombre = %s", ("admin",))
+            if not cur.fetchone():
+                from werkzeug.security import generate_password_hash
+                pw_plana = os.getenv("ADMIN_PASSWORD", "1234")
+                pw_hash = generate_password_hash(pw_plana)
+                cur.execute("INSERT INTO usuarios (nombre, password) VALUES (%s, %s)", ("admin", pw_hash))
+                print("👤 Admin creado en la nube correctamente.")
+            
+            con.commit()
+            con.close()
+        except Exception as e:
+            print(f"⚠️ Error inicializando nube: {e}")
+
+# 2. Arranque del sistema
 if __name__ == "__main__":
-    # 1. Iniciamos el Worker de sincronización en segundo plano
-    # Esto permite que tu PC local suba datos a la nube mientras usas la app
-    import threading
+    # Solo inicializamos la nube si estamos en Render
+    inicializar_nube()
+
+    # Iniciamos el Worker de sincronización (SOLO UNA VEZ)
+    # Esto corre tanto en PC como en Render (aunque en Render no hará nada si no hay SQLite)
     threading.Thread(target=sync_worker, daemon=True).start()
 
-    # 2. Configuración de puerto para Render o Local
-    # Render usa la variable 'PORT', si no existe (en tu PC), usa el 5000
+    # Configuración de puerto para Render o Local
     puerto = int(os.environ.get("PORT", 5000))
     
-    # 3. Arrancamos la app
-    # debug=True solo en tu PC; en Render es mejor False
+    # Arrancamos la app
     es_produccion = os.environ.get("RENDER")
     app.run(host="0.0.0.0", port=puerto, debug=not es_produccion)
