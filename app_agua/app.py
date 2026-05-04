@@ -651,26 +651,34 @@ def login():
     if request.method == "POST":
         password_ingresada = request.form.get("password")
 
-        # 1. Buscamos al usuario admin en la base de datos
         con = get_db()
         cur = con.cursor()
-        cur.execute("SELECT password FROM usuarios WHERE nombre = ?", ("admin",))
+
+        # 1. Adaptamos el query según dónde estemos corriendo la app
+        if os.environ.get("RENDER"):
+            # En la NUBE (Supabase) usamos %s
+            cur.execute("SELECT password FROM usuarios WHERE nombre = %s", ("admin",))
+        else:
+            # En tu PC (SQLite) usamos ?
+            cur.execute("SELECT password FROM usuarios WHERE nombre = ?", ("admin",))
+        
         usuario = cur.fetchone()
         con.close()
 
         if usuario:
-            # usuario[0] contiene la clave encriptada (el hash)
-            # check_password_hash verifica si la clave ingresada coincide con el hash
-            if check_password_hash(usuario[0], password_ingresada):
+            # Obtenemos el hash (en SQLite es usuario[0], en Postgres depende del cursor)
+            # Para estar seguros, usamos este método que funciona en ambos:
+            password_hash = usuario[0] if isinstance(usuario, (tuple, list)) else usuario['password']
+
+            if check_password_hash(password_hash, password_ingresada):
                 session["admin"] = True
                 return redirect("/dashboard")
             else:
                 return "❌ Clave incorrecta"
         else:
-            return "❌ El usuario admin no existe en la base de datos"
+            return "❌ El usuario admin no existe"
 
     return render_template("login.html")
-
 
 @app.route("/logout")
 def logout():
