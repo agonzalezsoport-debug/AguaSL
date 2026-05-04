@@ -3835,69 +3835,6 @@ def carrito_confirmar():
         if con: con.close() # Liberamos la base lo más rápido posible
 
 
-@app.route("/caja/cerrar", methods=["POST"])
-def cierre_caja():
-    caja_id = session.get("caja_id")
-    if not caja_id:
-        return "❌ No hay una caja activa en la sesión"
-
-    total_real = float(request.form.get("total_real") or 0)
-    
-    con = get_db_local()
-    cur = con.cursor()
-    
-    try:
-        # 1. Obtener datos básicos de la caja
-        cur.execute("SELECT monto_inicial, cajero, fecha_apertura FROM caja WHERE id=?", (caja_id,))
-        caja_data = cur.fetchone()
-        if not caja_data:
-            return "❌ Caja no encontrada en la base de datos"
-        
-        apertura, cajero_nombre, fecha_apertura = caja_data[0], caja_data[1], caja_data[2]
-
-        # 2. 🔥 EL FIX: Sumar SOLO ventas en EFECTIVO (Ignora transferencias/tarjetas)
-        cur.execute("""
-            SELECT COALESCE(SUM(total_final), 0) 
-            FROM ventas 
-            WHERE caja_id = ? AND UPPER(metodo_pago) = 'EFECTIVO'
-        """, (caja_id,))
-        ventas_efectivo = cur.fetchone()[0]
-        
-        # 3. Cálculo de diferencia real
-        # Esperado = 6000 (inicio) + 2000 (billetes de ventas) = 8000
-        esperado = apertura + ventas_efectivo
-        diferencia = total_real - esperado
-        fecha_cierre = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-        # 4. Update Local
-        cur.execute("""
-            UPDATE caja 
-            SET estado='CERRADA', fecha_cierre=?, cierre=?, diferencia=? 
-            WHERE id=?
-        """, (fecha_cierre, total_real, diferencia, caja_id))
-        
-        con.commit()
-
-        # 5. SYNC a Supabase
-        save_offline("caja", "insert", { 
-            "id": caja_id,
-            "cajero": cajero_nombre,
-            "fecha_apertura": fecha_apertura,
-            "fecha_cierre": fecha_cierre,
-            "cierre": total_real,      
-            "apertura": apertura,      
-            "diferencia": diferencia,
-            "estado": "CERRADA"
-        })
-
-        session.pop("caja_id", None)
-        return f"✅ Caja cerrada correctamente. Diferencia: ${diferencia:.2f}"
-
-    except Exception as e:
-        con.rollback()
-        return f"❌ Error al cerrar caja: {e}"
-    finally:
-        con.close()
 
 @app.route("/caja/apertura", methods=["GET", "POST"])
 def apertura_caja():
@@ -4557,6 +4494,8 @@ if __name__ == "__main__":
     # Arrancamos la app
     es_produccion = os.environ.get("RENDER")
     app.run(host="0.0.0.0", port=puerto, debug=not es_produccion)
+
+
 
 @app.route("/caja/cerrar", methods=["POST"])
 def cierre_caja():
