@@ -11,12 +11,28 @@ import sqlite3
 import uuid
 from datetime import datetime
 from flask import jsonify
+from werkzeug.security import check_password_hash
+import os
+from dotenv import load_dotenv  # <--- AGREGÁ ESTA LÍNEA ESPECÍFICAMENTE
+import psycopg2
+import sqlite3
+
+# Ahora sí podés llamarla
+load_dotenv()
+
+# Este print te va a confirmar si está leyendo bien el host o si sigue en None
+print(f"🌐 Intentando conectar a: {os.getenv('DB_CLOUD_HOST')}")
+
+
 
 
 app = Flask(__name__)
-app.secret_key = "clave_secreta"
 
-ADMIN_PASSWORD = "1234"
+# 🔥 CONFIGURACIÓN DE SEGURIDAD (Esto arregla el RuntimeError)
+# El segundo valor es un "plan B" por si el .env no carga
+app.secret_key = os.getenv("SECRET_KEY", "clave_de_emergencia_12345")
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "1234")
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "database.db")
 
@@ -34,14 +50,17 @@ if not os.path.exists(UPLOAD_FOLDER):
 
 
 def get_db_cloud():
+    # Cambié los nombres para que coincidan EXACTO con tu archivo .env
     return psycopg2.connect(
-        host="aws-1-us-east-1.pooler.supabase.com",
-        dbname="postgres",
-        user="postgres.dkualpdmiykqhdpfxzxu",
-        password="Administrator21slag",
-        port=6543,
+        host=os.getenv("DB_CLOUD_HOST"),
+        dbname=os.getenv("DB_CLOUD_NAME"),
+        user=os.getenv("DB_CLOUD_USER"),
+        password=os.getenv("DB_CLOUD_PASS"),
+        port=os.getenv("DB_CLOUD_PORT", 6543),
         sslmode="require"
     )
+
+
 
 
 def get_db_local():
@@ -189,22 +208,22 @@ def sync_worker():
 
 
 def get_db():
-    # 1. Si estamos en RENDER, conectamos SIEMPRE a Supabase (Directo)
+    # 1. Si estamos en RENDER (nube), conectamos a Supabase usando variables de entorno
     if os.environ.get("RENDER"):
         try:
             return psycopg2.connect(
-                host="aws-1-us-east-1.pooler.supabase.com",
-                dbname="postgres",
-                user="postgres.dkualpdmiykqhdpfxzxu",
-                password="Administrator21slag",
-                port=6543,
+                host=os.getenv("DB_CLOUD_HOST"),
+                dbname=os.getenv("DB_CLOUD_NAME"),
+                user=os.getenv("DB_CLOUD_USER"),
+                password=os.getenv("DB_CLOUD_PASS"),
+                port=os.getenv("DB_CLOUD_PORT", 6543),
                 sslmode="require"
             )
         except Exception as e:
             print(f"❌ Error conexión Supabase en Render: {e}")
+            return None
 
-    # 2. Si estamos en PC LOCAL, usamos SQLite (para que el worker trabaje)
-    # Esto permite que guardes local y el worker suba cuando haya internet
+    # 2. Si estamos en PC LOCAL, usamos SQLite
     con = sqlite3.connect(DB_PATH, timeout=30)
     con.row_factory = sqlite3.Row
     try:
@@ -212,6 +231,7 @@ def get_db():
     except:
         pass
     return con
+
 
 def ejecutar(cur, conn, query, params=None):
     es_sqlite = isinstance(conn, sqlite3.Connection)
@@ -629,15 +649,28 @@ def buscar_productos():
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        password = request.form.get("password")
+        password_ingresada = request.form.get("password")
 
-        if password == ADMIN_PASSWORD:
-            session["admin"] = True
-            return redirect("/dashboard")
+        # 1. Buscamos al usuario admin en la base de datos
+        con = get_db()
+        cur = con.cursor()
+        cur.execute("SELECT password FROM usuarios WHERE nombre = ?", ("admin",))
+        usuario = cur.fetchone()
+        con.close()
 
-        return "❌ Clave incorrecta"
+        if usuario:
+            # usuario[0] contiene la clave encriptada (el hash)
+            # check_password_hash verifica si la clave ingresada coincide con el hash
+            if check_password_hash(usuario[0], password_ingresada):
+                session["admin"] = True
+                return redirect("/dashboard")
+            else:
+                return "❌ Clave incorrecta"
+        else:
+            return "❌ El usuario admin no existe en la base de datos"
 
     return render_template("login.html")
+
 
 @app.route("/logout")
 def logout():
