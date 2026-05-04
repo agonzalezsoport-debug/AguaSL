@@ -1964,42 +1964,47 @@ def carrito_confirmar():
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (venta_id, fecha, subtotal, recargo_valor, descuento_valor, total_final, metodo_pago, cajero_nombre, caja_id))
 
-        # 2. INSERT ITEMS LOCALES
+        # 2. PROCESAR ITEMS E INVENTARIO
         items_para_sync = []
         for item in carrito:
             item_id = str(uuid.uuid4())
-            sub_item = float(item["precio"]) * int(item["cantidad"])
+            cant = int(item["cantidad"])
+            sub_item = float(item["precio"]) * cant
             
-            # 🔥 FIX DEFINITIVO: Consultamos los litros reales a la tabla productos
-            # Esto evita que dependamos de si el carrito tiene o no el dato
-            cur.execute("SELECT litros FROM productos WHERE id = ?", (item["id"],))
+            # Consultamos datos del producto para los litros y stock
+            cur.execute("SELECT litros, stock FROM productos WHERE id = ?", (item["id"],))
             res_prod = cur.fetchone()
             
-            # Extraemos el valor del litro (manejando si es Row de SQLite o tupla)
             litros_unidad = 0
             if res_prod:
                 try: litros_unidad = float(res_prod["litros"] or 0)
                 except: litros_unidad = float(res_prod[0] or 0)
 
-            litros_totales_item = litros_unidad * int(item["cantidad"])
+            litros_totales_item = litros_unidad * cant
 
+            # A. Insertar item de venta
             cur.execute("""
                 INSERT INTO venta_items (id, venta_id, producto_id, cantidad, litros_total, subtotal)
                 VALUES (?, ?, ?, ?, ?, ?)
-            """, (item_id, venta_id, item["id"], item["cantidad"], litros_totales_item, sub_item))
+            """, (item_id, venta_id, item["id"], cant, litros_totales_item, sub_item))
             
+            # B. DESCONTAR STOCK LOCAL
+            cur.execute("UPDATE productos SET stock = stock - ? WHERE id = ?", (cant, item["id"]))
+
+            # Preparamos data para sincronización
             items_para_sync.append({
                 "id": item_id, 
                 "venta_id": venta_id, 
                 "producto_id": item["id"],
-                "cantidad": item["cantidad"], 
+                "cantidad": cant, 
                 "litros_total": litros_totales_item,
                 "subtotal": sub_item
             })
 
         con.commit()
 
-        # ================= SYNC =================
+        # ================= SYNC OFFLINE =================
+        # Guardamos la venta principal
         data_venta_sync = {
             "id": venta_id, "fecha": fecha, "total": subtotal,
             "recargo": recargo_valor, "descuento": descuento_valor,
@@ -2008,8 +2013,15 @@ def carrito_confirmar():
         }
         save_offline("ventas", "insert", data_venta_sync)
 
+        # Guardamos cada item y el movimiento de stock para la nube
         for item_s in items_para_sync:
             save_offline("venta_items", "insert", item_s)
+            
+            # Notificamos a la nube que reste stock
+            save_offline("productos", "update", {
+                "id": item_s["producto_id"],
+                "stock_restar": item_s["cantidad"] 
+            })
 
         session["carrito"] = []
         return redirect("/ventas_ui")
