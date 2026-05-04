@@ -83,7 +83,8 @@ CREATE TABLE IF NOT EXISTS productos (
     precio REAL,
     stock INTEGER DEFAULT 0,
     fecha TEXT,
-    departamento TEXT
+    departamento TEXT,
+    foto TEXT
 )
 """)
 
