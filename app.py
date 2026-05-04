@@ -73,138 +73,98 @@ def get_db_local():
 
     
 def sync_worker():
-    print("🚀 WORKER INICIADO Y ESPERANDO DATOS...")
+    print("🚀 WORKER INICIADO: MODO SEGURO (PUSH PRIORITARIO + ESCUDO)")
     while True:
         try:
             if not internet_ok():
-                time.sleep(5)
-                continue
-
-            con = get_db_local()
-            cur = con.cursor()
-            
-            # Verificar registros pendientes (sync = 0)
-            cur.execute("SELECT COUNT(*) FROM sync_queue WHERE sync=0")
-            pendientes_row = cur.fetchone()
-            pendientes = pendientes_row[0] if pendientes_row else 0
-            
-            if pendientes > 0:
-                print(f"📦 Tienes {pendientes} registros pendientes por subir...")
-                cur.execute("SELECT * FROM sync_queue WHERE sync=0 LIMIT 50")
-                rows = cur.fetchall()
-            else:
-                rows = []
-            
-            con.close()
-
-            if not rows:
                 time.sleep(10)
                 continue
 
-            for row in rows:
-                id_queue = row["id"]
-                tabla = row["tabla"]
-                data = json.loads(row["data"])
+            # --- 1. SUBIDA (PUSH) ---
+            con = get_db_local()
+            cur = con.cursor()
+            cur.execute("SELECT id, tabla, data FROM sync_queue WHERE sync=0 LIMIT 50")
+            rows = cur.fetchall()
+            con.close()
 
-                print(f"🔄 SYNC: {tabla} (ID: {id_queue})")
+            if rows:
+                print(f"📦 Subiendo {len(rows)} cambios locales...")
+                con_cloud = get_db_cloud()
+                cur_cloud = con_cloud.cursor()
 
-                con_cloud = None
-                try:
-                    con_cloud = get_db_cloud()
-                    cur_cloud = con_cloud.cursor()
+                for row in rows:
+                    id_q, tabla, data_raw = row
+                    data = json.loads(data_raw)
 
-                    # ================= CAJA =================
-                    if tabla == "caja":
-                        cur_cloud.execute("""
-                            INSERT INTO caja(id, cajero, fecha_apertura, fecha_cierre, cierre, estado, monto_inicial, diferencia)
-                            VALUES (%s,%s,%s,%s,%s,%s,%s,%s) 
-                            ON CONFLICT (id) DO UPDATE SET
-                                fecha_cierre = EXCLUDED.fecha_cierre,
-                                cierre = EXCLUDED.cierre,
-                                estado = EXCLUDED.estado,
-                                diferencia = EXCLUDED.diferencia
-                        """, (data["id"], data.get("cajero"), data.get("fecha_apertura"), data.get("fecha_cierre"), data.get("cierre", 0), data.get("estado", "ABIERTA"), data.get("apertura", 0), data.get("diferencia", 0)))
-
-                    # ================= PRODUCTOS (ACTUALIZADO CON FOTO) =================
-                    elif tabla == "productos":
+                    if tabla == "productos":
+                        # Subida con refuerzo (UPDATE directo)
                         cur_cloud.execute("""
                             INSERT INTO productos(id, codigo, descripcion, litros, precio, stock, fecha, departamento, foto)
                             VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) 
-                            ON CONFLICT (id) DO UPDATE SET
-                                precio = EXCLUDED.precio,
-                                stock = EXCLUDED.stock,
-                                descripcion = EXCLUDED.descripcion,
-                                foto = EXCLUDED.foto
-                        """, (data["id"], data["codigo"], data["descripcion"], data["litros"], 
-                              data["precio"], data["stock"], data["fecha"], data.get("departamento"), 
-                              data.get("foto"))) # 🔥 Se agrega data.get("foto")
-
-                    # ================= VENTAS =================
-                    elif tabla == "ventas":
-                        cur_cloud.execute("""
-                            INSERT INTO ventas(id, fecha, total, recargo, descuento, total_final, metodo_pago, cajero, caja_id)
-                            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (id) DO NOTHING
-                        """, (data["id"], data["fecha"], data["total"], data.get("recargo",0), data.get("descuento",0), data["total_final"], data["metodo_pago"], data["cajero"], data.get("caja_id")))
-
-                    # ================= VENTA ITEMS =================
-                    elif tabla == "venta_items":
-                        cur_cloud.execute("""
-                            INSERT INTO venta_items(id, venta_id, producto_id, cantidad, litros_total, subtotal)
-                            VALUES (%s,%s,%s,%s,%s,%s) ON CONFLICT (id) DO NOTHING
-                        """, (data["id"], data["venta_id"], data["producto_id"], data["cantidad"], data.get("litros_total",0), data["subtotal"]))
+                            ON CONFLICT (id) DO UPDATE SET stock=EXCLUDED.stock, precio=EXCLUDED.precio
+                        """, (data["id"], data["codigo"], data["descripcion"], data["litros"], data["precio"], data["stock"], data["fecha"], data.get("departamento"), data.get("foto")))
                         
+                        cur_cloud.execute("UPDATE productos SET stock = %s WHERE id = %s", (data["stock"], data["id"]))
 
-                    # ================= PEDIDOS (NUEVO) =================
-                    elif tabla == "pedidos":
-                        cur_cloud.execute("""
-                            INSERT INTO pedidos (id, cliente_id, promo_id, fecha, estado)
-                            VALUES (%s, %s, %s, %s, %s)
-                            ON CONFLICT (id) DO UPDATE SET estado = EXCLUDED.estado
-                        """, (data["id"], data.get("cliente_id"), data.get("promo_id"), data.get("fecha"), data.get("estado", "Pendiente")))
+                    elif tabla == "ventas":
+                        cur_cloud.execute("INSERT INTO ventas(id, fecha, total, total_final, caja_id) VALUES (%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING",
+                                         (data["id"], data["fecha"], data["total"], data.get("total_final"), data.get("caja_id")))
 
-                    # ================= USUARIOS / CLIENTES (NUEVO) =================
-                    elif tabla == "usuarios":
-                        cur_cloud.execute("""
-                            INSERT INTO usuarios (nombre, telefono, direccion, password)
-                            VALUES (%s, %s, %s, %s) ON CONFLICT (nombre) DO NOTHING
-                        """, (data["nombre"], data.get("telefono"), data.get("direccion"), data["password"]))
+                    # Marcar como sincronizado localmente
+                    with get_db_local() as cl:
+                        cl.execute("UPDATE sync_queue SET sync=1 WHERE id=?", (id_q,))
+                
+                con_cloud.commit()
+                con_cloud.close()
+                print("✅ Cambios impactados en la nube. Esperando pausa de seguridad...")
+                time.sleep(5) # Pausa para que la nube estabilice el dato
+                continue # Saltamos la bajada en esta vuelta
 
-                    # ================= CAJEROS =================
-                    elif tabla == "cajeros":
-                        cur_cloud.execute("""
-                            INSERT INTO cajeros(usuario, password, rol)
-                            VALUES (%s,%s,%s) ON CONFLICT (usuario) DO NOTHING
-                        """, (data["usuario"], data["password"], data.get("rol", "cajero")))
+            # --- 2. BAJADA (PULL) CON ESCUDO ---
+            con_cloud = get_db_cloud()
+            cur_cloud = con_cloud.cursor()
+            tablas = ["productos", "cajeros", "caja", "ventas", "promos", "usuarios"]
 
-                    # ================= PROMOS / LITROS =================
-                    elif tabla == "promos":
-                        cur_cloud.execute("INSERT INTO promos(id, nombre, descripcion, precio, activa) VALUES (%s,%s,%s,%s,%s) ON CONFLICT (id) DO NOTHING", 
-                                        (data["id"], data["nombre"], data["descripcion"], data["precio"], data["activa"]))
+            for t in tablas:
+                cur_cloud.execute(f"SELECT * FROM {t}")
+                cols = [desc[0] for desc in cur_cloud.description]
+                rows_cloud = cur_cloud.fetchall()
 
-                    elif tabla == "litros_control":
-                        cur_cloud.execute("INSERT INTO litros_control(litros, fecha) VALUES (%s,%s)", (data["litros"], data["fecha"]))
+                con_loc = get_db_local()
+                cur_loc = con_loc.cursor()
+                
+                # BUSCAR IDs PENDIENTES (ESCUDO)
+                cur_loc.execute("SELECT data FROM sync_queue WHERE tabla=? AND sync=0", (t,))
+                pendientes = []
+                for r in cur_loc.fetchall():
+                    try:
+                        d_json = json.loads(r[0]) # r[0] porque fetchall devuelve tuplas
+                        pendientes.append(str(d_json.get('id')))
+                    except: continue
 
-                    # MANDAR CAMBIOS A LA NUBE
-                    con_cloud.commit()
-                    
-                    # MARCAR SYNC LOCAL
-                    con_loc = get_db_local()
-                    cur_loc = con_loc.cursor()
-                    cur_loc.execute("UPDATE sync_queue SET sync=1 WHERE id=?", (id_queue,))
-                    con_loc.commit()
-                    con_loc.close()
-                    print(f"✅ OK: {tabla} sincronizada correctamente")
+                for rc in rows_cloud:
+                    row_dict = dict(zip(cols, rc))
+                    rid = str(row_dict.get('id'))
 
-                except Exception as e:
-                    print(f"❌ ERROR EN {tabla}: {e}")
-                    if con_cloud: con_cloud.rollback()
-                finally:
-                    if con_cloud: con_cloud.close()
+                    # 🛡️ Si el ID está en la cola esperando subir, NO lo pisamos con lo de la nube
+                    if rid in pendientes:
+                        continue 
+
+                    # Conversión Decimal a Float
+                    rp = [float(v) if isinstance(v, decimal.Decimal) else v for v in rc]
+                    query = f"INSERT OR REPLACE INTO {t} ({', '.join(cols)}) VALUES ({', '.join(['?']*len(cols))})"
+                    cur_loc.execute(query, tuple(rp))
+                
+                con_loc.commit()
+                con_loc.close()
+            con_cloud.close()
 
         except Exception as e:
-            print(f"🔥 ERROR GLOBAL: {e}")
+            print(f"🔥 ERROR SYNC: {e}")
         
-        time.sleep(5)
+        time.sleep(30)
+
+
 
 
 def get_db():
@@ -1406,92 +1366,72 @@ def ventas():
     if not (session.get("admin") or session.get("cajero_id")):
         return redirect("/")
 
-    con = get_db()
-    cur = con.cursor()
-
     if request.method == "POST":
-        try:
-            caja_id = session.get("caja_id")
-            if not caja_id:
-                return "❌ No puedes vender sin caja abierta"
+        # CONEXIÓN MANUAL PARA EVITAR INTERFERENCIAS
+        con = sqlite3.connect(DB_PATH, timeout=30)
+        con.row_factory = sqlite3.Row
+        cur = con.cursor()
 
+        try:
             codigo = (request.form.get("codigo") or "").strip().upper()
             cantidad = int(request.form.get("cantidad") or 0)
-            recargo = float(request.form.get("recargo") or 0)
-            descuento = float(request.form.get("descuento") or 0)
-            metodo_pago = request.form.get("metodo_pago")
+            print(f"DEBUG: Buscando código [{codigo}]")
 
-            if cantidad <= 0: return "❌ Cantidad inválida"
-
-            # 1. Buscamos el producto (traemos los litros que tiene configurados)
-            ejecutar(cur, con, "SELECT id, descripcion, litros, precio, stock FROM productos WHERE UPPER(codigo)=%s", (codigo,))
+            # 1. Buscar producto
+            cur.execute("SELECT * FROM productos WHERE UPPER(TRIM(codigo)) = ?", (codigo,))
             prod = cur.fetchone()
             
-            if not prod: return "❌ Producto no existe"
+            if not prod:
+                print("DEBUG: Producto NO encontrado")
+                return f"❌ El código {codigo} no existe localmente."
 
-            if isinstance(prod, sqlite3.Row):
-                producto_id, desc, litros, precio, stock = prod["id"], prod["descripcion"], prod["litros"], prod["precio"], prod["stock"]
-            else:
-                producto_id, desc, litros, precio, stock = prod
+            p = dict(prod)
+            id_real = p['id']
+            stock_anterior = p['stock']
+            nuevo_stock = stock_anterior - cantidad
+            print(f"DEBUG: Producto [{p['descripcion']}] | Stock: {stock_anterior} -> Nuevo: {nuevo_stock}")
 
-            if stock < cantidad: return f"❌ Stock insuficiente (Disponible: {stock})"
+            # 2. INTENTO DE DESCUENTO
+            cur.execute("UPDATE productos SET stock = ? WHERE id = ?", (nuevo_stock, id_real))
             
-            # --- CÁLCULOS ---
-            subtotal = precio * cantidad
-            total_final = subtotal + recargo - descuento
-            litros_total = (litros or 0) * cantidad # 🔥 Calculamos los litros totales de la venta
-            
-            venta_id = str(uuid.uuid4())
-            item_id = venta_id + "_i"
-            fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            cajero_nombre = "admin" if session.get("admin") else session.get("nombre_cajero")
+            # 3. VERIFICAR SI SQLITE REALMENTE CAMBIÓ LA FILA
+            if cur.rowcount == 0:
+                print("DEBUG: El UPDATE se ejecutó pero cur.rowcount es 0 (No se modificó nada)")
+                return "❌ Error: La base de datos no permitió actualizar el stock."
 
-            # 2. INSERT LOCAL VENTAS
-            ejecutar(cur, con, """
-                INSERT INTO ventas (id, fecha, total, recargo, descuento, total_final, metodo_pago, cajero, caja_id)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """, (venta_id, fecha, subtotal, recargo, descuento, total_final, metodo_pago, cajero_nombre, caja_id))
-
-            # 3. INSERT LOCAL ITEMS (Aquí se guardan los litros_total)
-            ejecutar(cur, con, """
-                INSERT INTO venta_items (id, venta_id, producto_id, cantidad, litros_total, subtotal) 
-                VALUES (%s, %s, %s, %s, %s, %s)
-            """, (item_id, venta_id, producto_id, cantidad, litros_total, subtotal))
-
-            ejecutar(cur, con, "UPDATE productos SET stock = stock - %s WHERE id = %s", (cantidad, producto_id))
-
+            # 4. FORZAR GUARDADO
             con.commit()
             
-            # 4. SINCRONIZACIÓN Y COLA OFFLINE
-            try:
-                sync_venta_to_cloud(venta_id, fecha, subtotal, recargo, descuento, total_final, metodo_pago, cajero_nombre, [{
-                    "id": item_id, "producto_id": producto_id, "cantidad": cantidad, "litros_total": litros_total, "subtotal": subtotal
-                }])
-            except:
-                # Si falla la nube, guardamos en la cola local
-                save_offline("ventas", "insert", {
-                    "id": venta_id, "fecha": fecha, "total": subtotal, "total_final": total_final, 
-                    "metodo_pago": metodo_pago, "cajero": cajero_nombre, "caja_id": caja_id
-                })
-                
-                # 🔥 MUY IMPORTANTE: Guardamos el item con sus LITROS en la cola
-                save_offline("venta_items", "insert", {
-                    "id": item_id, "venta_id": venta_id, "producto_id": producto_id, 
-                    "cantidad": cantidad, "litros_total": litros_total, "subtotal": subtotal
-                })
+            # 5. VERIFICACIÓN POST-COMMIT (Para estar 100% seguros)
+            cur.execute("SELECT stock FROM productos WHERE id = ?", (id_real,))
+            confirmacion = cur.fetchone()[0]
+            print(f"DEBUG: Stock en disco después del commit: {confirmacion}")
 
-            return f"✅ Venta realizada. Total: ${total_final} ({litros_total} L)"
+            if confirmacion != nuevo_stock:
+                print("DEBUG: ¡ERROR CRÍTICO! El stock en disco no coincide con el nuevo stock.")
+
+            # 6. ENCOLAR PARA SUPABASE
+            p['stock'] = nuevo_stock
+            cur.execute("INSERT INTO sync_queue (tabla, data, sync) VALUES (?, ?, 0)", 
+                        ("productos", json.dumps(p), 0))
+            con.commit()
+
+            return f"✅ Venta exitosa. Stock: {nuevo_stock}"
 
         except Exception as e:
             con.rollback()
-            return f"❌ Error en venta: {e}"
+            print(f"DEBUG: EXCEPCIÓN CACHADA: {e}")
+            return f"❌ Error crítico: {e}"
         finally:
             con.close()
 
-    ejecutar(cur, con, "SELECT * FROM productos")
-    productos = cur.fetchall()
+    # Carga normal de la página
+    con = get_db_local()
+    productos = con.execute("SELECT * FROM productos ORDER BY descripcion ASC").fetchall()
     con.close()
     return render_template("ventas.html", productos=productos)
+
+
 
 @app.route("/admin/cierres_caja")
 def ver_cierres_caja():
