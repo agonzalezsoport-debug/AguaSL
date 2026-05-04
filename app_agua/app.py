@@ -2679,5 +2679,16 @@ import threading
 threading.Thread(target=sync_worker, daemon=True).start()
 
 if __name__ == "__main__":
-    # Esto solo se ejecuta en tu computadora local
-    app.run(debug=True, port=5000)
+    # 1. Iniciamos el Worker de sincronización en segundo plano
+    # Esto permite que tu PC local suba datos a la nube mientras usas la app
+    import threading
+    threading.Thread(target=sync_worker, daemon=True).start()
+
+    # 2. Configuración de puerto para Render o Local
+    # Render usa la variable 'PORT', si no existe (en tu PC), usa el 5000
+    puerto = int(os.environ.get("PORT", 5000))
+    
+    # 3. Arrancamos la app
+    # debug=True solo en tu PC; en Render es mejor False
+    es_produccion = os.environ.get("RENDER")
+    app.run(host="0.0.0.0", port=puerto, debug=not es_produccion)
