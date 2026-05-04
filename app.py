@@ -1931,24 +1931,19 @@ def ventas_ui():
 @app.route("/carrito/confirmar", methods=["POST"])
 def carrito_confirmar():
     carrito = session.get("carrito", [])
-    if not carrito:
-        return "❌ Carrito vacío"
+    if not carrito: return "❌ Carrito vacío"
 
     caja_id = session.get("caja_id")
-    if not caja_id:
-        return "❌ Debes abrir caja primero"
+    if not caja_id: return "❌ Debes abrir caja primero"
 
-    con = get_db_local() 
+    # 1. Abrimos UNA SOLA conexión para todo el proceso
+    con = get_db_local()
     cur = con.cursor()
 
     try:
         metodo_pago = request.form.get("metodo_pago")
         recargo_porc = float(request.form.get("recargo") or 0)
         descuento_porc = float(request.form.get("descuento") or 0)
-
-        if not metodo_pago:
-            return "❌ Selecciona método de pago"
-
         cajero_nombre = "admin" if session.get("admin") else session.get("nombre_cajero")
         venta_id = str(uuid.uuid4())
         fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -1958,67 +1953,77 @@ def carrito_confirmar():
         descuento_valor = subtotal * (descuento_porc / 100)
         total_final = subtotal + recargo_valor - descuento_valor
 
-        # 1. INSERT VENTA LOCAL
+        # 2. INSERT VENTA LOCAL
         cur.execute("""
             INSERT INTO ventas (id, fecha, total, recargo, descuento, total_final, metodo_pago, cajero, caja_id)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (venta_id, fecha, subtotal, recargo_valor, descuento_valor, total_final, metodo_pago, cajero_nombre, caja_id))
 
-        # 2. INSERT ITEMS LOCALES
         items_para_sync = []
         for item in carrito:
             item_id = str(uuid.uuid4())
-            sub_item = float(item["precio"]) * int(item["cantidad"])
+            prod_id = item["id"]
+            cantidad = int(item["cantidad"])
+            sub_item = float(item["precio"]) * cantidad
             
-            # 🔥 FIX DEFINITIVO: Consultamos los litros reales a la tabla productos
-            # Esto evita que dependamos de si el carrito tiene o no el dato
-            cur.execute("SELECT litros FROM productos WHERE id = ?", (item["id"],))
-            res_prod = cur.fetchone()
-            
-            # Extraemos el valor del litro (manejando si es Row de SQLite o tupla)
-            litros_unidad = 0
-            if res_prod:
-                try: litros_unidad = float(res_prod["litros"] or 0)
-                except: litros_unidad = float(res_prod[0] or 0)
+            # --- DESCONTAR STOCK ---
+            if "promo_" not in str(prod_id):
+                cur.execute("UPDATE productos SET stock = stock - ? WHERE id = ?", (cantidad, prod_id))
+                
+                # Buscamos datos para el sync (usando la misma conexión 'cur')
+                cur.execute("SELECT * FROM productos WHERE id = ?", (prod_id,))
+                p_row = cur.fetchone()
+                if p_row:
+                    p_dict = dict(p_row)
+                    # INSERTAR EN COLA DE SYNC MANUALMENTE (Evita abrir otra conexión)
+                    cur.execute("INSERT INTO sync_queue (tabla, accion, data, sync) VALUES (?, ?, ?, 0)",
+                                ("productos", "update", json.dumps(p_dict)))
 
-            litros_totales_item = litros_unidad * int(item["cantidad"])
+            # --- INSERT ITEM LOCAL ---
+            cur.execute("SELECT litros FROM productos WHERE id = ?", (prod_id,))
+            res_prod = cur.fetchone()
+            litros_u = float(res_prod[0] or 0) if res_prod else 0
+            litros_t = litros_u * cantidad
 
             cur.execute("""
                 INSERT INTO venta_items (id, venta_id, producto_id, cantidad, litros_total, subtotal)
                 VALUES (?, ?, ?, ?, ?, ?)
-            """, (item_id, venta_id, item["id"], item["cantidad"], litros_totales_item, sub_item))
+            """, (item_id, venta_id, prod_id, cantidad, litros_t, sub_item))
             
             items_para_sync.append({
-                "id": item_id, 
-                "venta_id": venta_id, 
-                "producto_id": item["id"],
-                "cantidad": item["cantidad"], 
-                "litros_total": litros_totales_item,
-                "subtotal": sub_item
+                "id": item_id, "venta_id": venta_id, "producto_id": prod_id,
+                "cantidad": cantidad, "litros_total": litros_t, "subtotal": sub_item
             })
 
-        con.commit()
-
-        # ================= SYNC =================
+        # 3. ENCOLAR VENTA Y ITEMS (MANUALMENTE)
         data_venta_sync = {
-            "id": venta_id, "fecha": fecha, "total": subtotal,
-            "recargo": recargo_valor, "descuento": descuento_valor,
-            "total_final": total_final, "metodo_pago": metodo_pago, 
-            "cajero": cajero_nombre, "caja_id": caja_id
+            "id": venta_id, "fecha": fecha, "total": subtotal, "total_final": total_final, 
+            "metodo_pago": metodo_pago, "cajero": cajero_nombre, "caja_id": caja_id
         }
-        save_offline("ventas", "insert", data_venta_sync)
+        cur.execute("INSERT INTO sync_queue (tabla, accion, data, sync) VALUES (?, ?, ?, 0)",
+                    ("ventas", "insert", json.dumps(data_venta_sync)))
 
-        for item_s in items_para_sync:
-            save_offline("venta_items", "insert", item_s)
+        for it in items_para_sync:
+            cur.execute("INSERT INTO sync_queue (tabla, accion, data, sync) VALUES (?, ?, ?, 0)",
+                        ("venta_items", "insert", json.dumps(it)))
 
+        # 4. GUARDAR TODO DE UN SOLO TIRO
+        con.commit()
         session["carrito"] = []
+        print(f"✅ Venta exitosa: {venta_id}")
         return redirect("/ventas_ui")
 
+    except sqlite3.OperationalError as e:
+        if con: con.rollback()
+        print(f"⚠️ Base bloqueada: {e}")
+        return "⚠️ El sistema está ocupado (Sync corriendo). Reintentá en 3 segundos."
     except Exception as e:
         if con: con.rollback()
+        print(f"❌ Error: {e}")
         return f"❌ Error en venta: {e}"
     finally:
-        if con: con.close()
+        if con: con.close() # Liberamos la base lo más rápido posible
+
 
 @app.route("/caja/cerrar", methods=["POST"])
 def cierre_caja():
