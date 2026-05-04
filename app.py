@@ -652,22 +652,27 @@ def login():
         password_ingresada = request.form.get("password")
 
         con = get_db()
+        if con is None:
+            return "❌ Error de conexión con la base de datos", 500
+            
         cur = con.cursor()
 
-        # 1. Adaptamos el query según dónde estemos corriendo la app
-        if os.environ.get("RENDER"):
-            # En la NUBE (Supabase) usamos %s
-            cur.execute("SELECT password FROM usuarios WHERE nombre = %s", ("admin",))
-        else:
-            # En tu PC (SQLite) usamos ?
-            cur.execute("SELECT password FROM usuarios WHERE nombre = ?", ("admin",))
+        # Usamos %s y la función ejecutar se encarga de convertirlo a ? si es SQLite
+        query = "SELECT password FROM usuarios WHERE nombre = %s"
         
-        usuario = cur.fetchone()
-        con.close()
+        try:
+            # Usamos la función 'ejecutar' que definiste antes para que sea compatible
+            ejecutar(cur, con, query, ("admin",))
+            usuario = cur.fetchone()
+        except Exception as e:
+            print(f"🔥 Error en query de login: {e}")
+            return "❌ Error interno", 500
+        finally:
+            con.close()
 
         if usuario:
-            # Obtenemos el hash (en SQLite es usuario[0], en Postgres depende del cursor)
-            # Para estar seguros, usamos este método que funciona en ambos:
+            # Obtenemos el hash de forma segura (funciona para SQLite y Postgres)
+            # En Postgres/psycopg2 el resultado suele ser una tupla, en SQLite un Row
             password_hash = usuario[0] if isinstance(usuario, (tuple, list)) else usuario['password']
 
             if check_password_hash(password_hash, password_ingresada):
@@ -679,6 +684,7 @@ def login():
             return "❌ El usuario admin no existe"
 
     return render_template("login.html")
+
 
 @app.route("/logout")
 def logout():
