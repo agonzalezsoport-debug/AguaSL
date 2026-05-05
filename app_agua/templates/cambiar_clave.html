@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card" style="max-width: 400px; margin: 50px auto; padding: 20px; border: 1px solid #ddd; border-radius: 8px;">
+    <h2>Cambiar Clave Admin</h2>
+    <hr>
+    
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        {% for message in messages %}
+          <div style="background: #ffdbdb; color: #a94442; padding: 10px; margin-bottom: 15px; border-radius: 4px;">
+              {{ message }}
+          </div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    <form method="POST">
+        <div style="margin-bottom: 15px;">
+            <label>Clave Actual:</label><br>
+            <input type="password" name="clave_actual" required style="width: 100%; padding: 8px; margin-top: 5px;">
+        </div>
+        <div style="margin-bottom: 15px;">
+            <label>Nueva Clave:</label><br>
+            <input type="password" name="nueva_clave" required style="width: 100%; padding: 8px; margin-top: 5px;">
+        </div>
+        <div style="display: flex; justify-content: space-between;">
+            <button type="submit" style="background: #28a745; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer;">Guardar Cambios</button>
+            <a href="/dashboard" style="text-decoration: none; color: #666; padding-top: 10px;">Cancelar</a>
+        </div>
+    </form>
+</div>
+{% endblock %}
