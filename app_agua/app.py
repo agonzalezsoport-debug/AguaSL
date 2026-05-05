@@ -16,15 +16,6 @@ import os
 from dotenv import load_dotenv  # <--- AGREGÁ ESTA LÍNEA ESPECÍFICAMENTE
 import psycopg2
 import sqlite3
-import threading
-from decimal import Decimal # Solo necesitamos este
-
-
-
-# Este objeto asegura que Flask y el Worker no choquen al escribir en la base de datos
-db_lock = threading.Lock()
-
-
 
 # Ahora sí podés llamarla
 load_dotenv()
@@ -81,181 +72,180 @@ def get_db_local():
     return con
 
     
-import threading
-import json
 import time
-import os
-from decimal import Decimal
-
-# Candado para que solo corra UN worker a la vez en memoria
-worker_running_lock = threading.Lock()
+import json
+import decimal  # Necesario para procesar números de Supabase
+import sqlite3
+import psycopg2
 
 def sync_worker():
-    # Si ya hay un proceso de sincronización activo, este rebota
-    if not worker_running_lock.acquire(blocking=False):
-        return
+    print("🚀 WORKER INICIADO Y ESPERANDO DATOS...")
+    while True:
+        try:
+            if not internet_ok():
+                time.sleep(5)
+                continue
 
-    print("🚀 WORKER INTEGRAL: SUBIDA DINÁMICA + BAJADA CON ESCUDO (LOCK ACTIVADO)")
-    last_pull = 0
-    es_render = os.environ.get("RENDER")
-
-    try:
-        while True:
-            try:
-                if not internet_ok():
-                    time.sleep(10)
-                    continue
-
-                # ==========================================
-                # 1. SUBIDA (PUSH): De la PC a Supabase
-                # ==========================================
-                if not es_render:
-                    pendientes = []
-                    # Bloqueamos solo para leer y marcar como "en proceso" (sync=2)
-                    with db_lock:
-                        con_l = get_db_local()
-                        cur_l = con_l.cursor()
-                        cur_l.execute("SELECT id, tabla, data FROM sync_queue WHERE sync=0 ORDER BY id ASC LIMIT 50")
-                        originales = cur_l.fetchall()
-                        
-                        if originales:
-                            pendientes = [dict(row) for row in originales]
-                            ids = [p["id"] for p in pendientes]
-                            # Marcamos inmediatamente como sync=2 (EN PROCESO)
-                            placeholders = ",".join(["?"] * len(ids))
-                            con_l.execute(f"UPDATE sync_queue SET sync=2 WHERE id IN ({placeholders})", ids)
-                            con_l.commit()
-                        con_l.close()
-
-                    if pendientes:
-                        print(f"📦 Procesando {len(pendientes)} cambios pendientes...")
-                        con_cloud = get_db_cloud()
-                        cur_cloud = con_cloud.cursor()
-                        
-                        for row in pendientes:
-                            id_q, tabla, data_raw = row["id"], row["tabla"], row["data"]
-                            data = json.loads(data_raw)
-                            
-                            try:
-                                # --- 🛡️ NORMALIZACIÓN DE CAMPOS PARA "CAJA" ---
-                                if tabla == "caja":
-                                    if "apertura" in data:
-                                        data["monto_inicial"] = data.pop("apertura")
-                                    if "cierre" not in data: data["cierre"] = 0
-                                    if "diferencia" not in data: data["diferencia"] = 0
-
-                                # --- CASO A: DESCUENTO DE STOCK ---
-                                if tabla == "productos" and "stock_restar" in data:
-                                    cur_cloud.execute("""
-                                        UPDATE productos 
-                                        SET stock = stock - %s 
-                                        WHERE id = %s
-                                    """, (data["stock_restar"], data["id"]))
-                                
-                                # --- CASO B: SINCRONIZACIÓN DINÁMICA ---
-                                else:
-                                    columnas = [k for k in data.keys() if k != 'stock_restar']
-                                    valores = [data[k] for k in columnas]
-                                    placeholders = ", ".join(["%s"] * len(valores))
-                                    nombres_cols = ", ".join(columnas)
-                                    update_stmt = ", ".join([f"{k}=EXCLUDED.{k}" for k in columnas if k != 'id'])
-
-                                    query = f"""
-                                        INSERT INTO {tabla} ({nombres_cols}) 
-                                        VALUES ({placeholders})
-                                        ON CONFLICT (id) DO UPDATE SET {update_stmt}
-                                    """
-                                    cur_cloud.execute(query, valores)
-
-                                con_cloud.commit()
-
-                                # Marcar como sincronizado FINAL (sync=1)
-                                with db_lock:
-                                    con_upd = get_db_local()
-                                    con_upd.execute("UPDATE sync_queue SET sync=1 WHERE id=?", (id_q,))
-                                    con_upd.commit()
-                                    con_upd.close()
-                                
-                                print(f"  ✅ {tabla} sincronizado correctamente.")
-
-                            except Exception as e_row:
-                                con_cloud.rollback()
-                                print(f"  ❌ Error subiendo {tabla} (ID Cola: {id_q}): {e_row}")
-                                # Si falló, lo volvemos a poner en sync=0 para reintentar después
-                                with db_lock:
-                                    con_fail = get_db_local()
-                                    con_fail.execute("UPDATE sync_queue SET sync=0 WHERE id=?", (id_q,))
-                                    con_fail.commit()
-                                    con_fail.close()
-                        
-                        con_cloud.close()
-
-                # ==========================================
-                # 2. BAJADA (PULL): De Supabase a la PC
-                # ==========================================
-                if not es_render and (time.time() - last_pull > 60):
-                    print("⬇️ Sincronizando desde Supabase (Bajada)...")
-                    try:
-                        con_c = get_db_cloud()
-                        cur_c = con_c.cursor()
-                        tablas_bajar = ["productos", "cajeros", "ventas", "venta_items", "promos", "usuarios", "caja"]
-                        
-                        for t in tablas_bajar:
-                            try:
-                                cur_c.execute(f"SELECT * FROM {t}")
-                                cols = [desc[0] for desc in cur_c.description]
-                                rows_nube = cur_c.fetchall()
-
-                                with db_lock:
-                                    con_loc = get_db_local()
-                                    for r_nube in rows_nube:
-                                        r_dict = dict(zip(cols, r_nube))
-                                        rid = str(r_dict.get('id'))
-
-                                        # 🛡️ ESCUDO LOCAL: No pisar si hay cambios pendientes (sync 0 o 2)
-                                        cur_check = con_loc.execute(
-                                            "SELECT 1 FROM sync_queue WHERE tabla=? AND sync IN (0,2) AND data LIKE ?", 
-                                            (t, f'%"{rid}"%')
-                                        )
-                                        if cur_check.fetchone():
-                                            continue
-
-                                        vals_limpios = [float(v) if isinstance(v, Decimal) else v for v in r_nube]
-                                        placeholders = ",".join(["?"] * len(cols))
-                                        con_loc.execute(f"INSERT OR REPLACE INTO {t} ({','.join(cols)}) VALUES ({placeholders})", vals_limpios)
-                                    
-                                    con_loc.commit()
-                                    con_loc.close()
-                            except Exception as e_tabla:
-                                print(f"  ⚠️ Saltando tabla {t} en bajada: {e_tabla}")
-
-                        con_c.close()
-                        last_pull = time.time()
-                        print("🔄 PC sincronizada con éxito.")
-                    except Exception as e_pull:
-                        print(f"🔥 Error en bloque de bajada: {e_pull}")
-
-            except Exception as e_global:
-                print(f"🆘 Error Crítico en Worker: {e_global}")
+            con = get_db_local()
+            cur = con.row_factory = sqlite3.Row # Aseguramos acceso por nombre de columna
+            cur = con.cursor()
             
-            time.sleep(15)
+            # Verificar registros pendientes (sync = 0)
+            cur.execute("SELECT COUNT(*) FROM sync_queue WHERE sync=0")
+            pendientes_row = cur.fetchone()
+            pendientes = pendientes_row[0] if pendientes_row else 0
+            
+            if pendientes > 0:
+                print(f"📦 Tienes {pendientes} registros pendientes por subir...")
+                cur.execute("SELECT * FROM sync_queue WHERE sync=0 LIMIT 50")
+                rows = cur.fetchall()
+            else:
+                rows = []
+            
+            con.close()
 
-    finally:
-        # Siempre liberamos el candado al salir (aunque haya error)
-        worker_running_lock.release()
+            if not rows:
+                time.sleep(10)
+                continue
 
+            for row in rows:
+                id_queue = row["id"]
+                tabla = row["tabla"]
+                data = json.loads(row["data"])
 
+                print(f"🔄 SYNC: {tabla} (ID: {id_queue})")
 
+                con_cloud = None
+                try:
+                    con_cloud = get_db_cloud()
+                    cur_cloud = con_cloud.cursor()
 
+                    # ================= CAJA =================
+                    if tabla == "caja":
+                        cur_cloud.execute("""
+                            INSERT INTO caja(id, cajero, fecha_apertura, fecha_cierre, cierre, estado, monto_inicial, diferencia)
+                            VALUES (%s,%s,%s,%s,%s,%s,%s,%s) 
+                            ON CONFLICT (id) DO UPDATE SET
+                                fecha_cierre = EXCLUDED.fecha_cierre,
+                                cierre = EXCLUDED.cierre,
+                                estado = EXCLUDED.estado,
+                                diferencia = EXCLUDED.diferencia
+                        """, (data["id"], data.get("cajero"), data.get("fecha_apertura"), data.get("fecha_cierre"), data.get("cierre", 0), data.get("estado", "ABIERTA"), data.get("apertura", 0), data.get("diferencia", 0)))
+
+                    # ================= PRODUCTOS (RESTA STOCK) =================
+                    elif tabla == "productos":
+                        if "stock_restar" in data:
+                            # Lógica para descontar stock en Supabase
+                            cur_cloud.execute("""
+                                UPDATE productos 
+                                SET stock = stock - %s 
+                                WHERE id = %s
+                            """, (data["stock_restar"], data["id"]))
+                        else:
+                            # Lógica normal para insertar o editar producto
+                            cur_cloud.execute("""
+                                INSERT INTO productos(id, codigo, descripcion, litros, precio, stock, fecha, departamento, foto)
+                                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) 
+                                ON CONFLICT (id) DO UPDATE SET
+                                    precio = EXCLUDED.precio,
+                                    stock = EXCLUDED.stock,
+                                    descripcion = EXCLUDED.descripcion,
+                                    foto = EXCLUDED.foto
+                            """, (data["id"], data["codigo"], data["descripcion"], data["litros"], 
+                                  data["precio"], data["stock"], data["fecha"], data.get("departamento"), 
+                                  data.get("foto")))
+
+                    # ================= VENTAS =================
+                    elif tabla == "ventas":
+                        cur_cloud.execute("""
+                            INSERT INTO ventas(id, fecha, total, recargo, descuento, total_final, metodo_pago, cajero, caja_id)
+                            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (id) DO NOTHING
+                        """, (data["id"], data["fecha"], data["total"], data.get("recargo",0), data.get("descuento",0), data["total_final"], data["metodo_pago"], data["cajero"], data.get("caja_id")))
+
+                    # ================= VENTA ITEMS =================
+                    elif tabla == "venta_items":
+                        cur_cloud.execute("""
+                            INSERT INTO venta_items(id, venta_id, producto_id, cantidad, litros_total, subtotal)
+                            VALUES (%s,%s,%s,%s,%s,%s) ON CONFLICT (id) DO NOTHING
+                        """, (data["id"], data["venta_id"], data["producto_id"], data["cantidad"], data.get("litros_total",0), data["subtotal"]))
+                        
+
+                    # ================= PEDIDOS =================
+                    elif tabla == "pedidos":
+                        cur_cloud.execute("""
+                            INSERT INTO pedidos (id, cliente_id, promo_id, fecha, estado)
+                            VALUES (%s, %s, %s, %s, %s)
+                            ON CONFLICT (id) DO UPDATE SET estado = EXCLUDED.estado
+                        """, (data["id"], data.get("cliente_id"), data.get("promo_id"), data.get("fecha"), data.get("estado", "Pendiente")))
+
+                    # ================= USUARIOS =================
+                    elif tabla == "usuarios":
+                        cur_cloud.execute("""
+                            INSERT INTO usuarios (nombre, telefono, direccion, password)
+                            VALUES (%s, %s, %s, %s) ON CONFLICT (nombre) DO NOTHING
+                        """, (data["nombre"], data.get("telefono"), data.get("direccion"), data["password"]))
+
+                    # ================= CAJEROS =================
+                    elif tabla == "cajeros":
+                        cur_cloud.execute("""
+                            INSERT INTO cajeros(usuario, password, rol)
+                            VALUES (%s,%s,%s) ON CONFLICT (usuario) DO NOTHING
+                        """, (data["usuario"], data["password"], data.get("rol", "cajero")))
+
+                    # ================= PROMOS =================
+                    elif tabla == "promos":
+                        cur_cloud.execute("INSERT INTO promos(id, nombre, descripcion, precio, activa) VALUES (%s,%s,%s,%s,%s) ON CONFLICT (id) DO NOTHING", 
+                                        (data["id"], data["nombre"], data["descripcion"], data["precio"], data["activa"]))
+
+                    elif tabla == "litros_control":
+                        cur_cloud.execute("INSERT INTO litros_control(litros, fecha) VALUES (%s,%s)", (data["litros"], data["fecha"]))
+
+                    # MANDAR CAMBIOS A LA NUBE
+                    con_cloud.commit()
+                    
+                    # MARCAR SYNC LOCAL
+                    con_loc = get_db_local()
+                    cur_loc = con_loc.cursor()
+                    cur_loc.execute("UPDATE sync_queue SET sync=1 WHERE id=?", (id_queue,))
+                    con_loc.commit()
+                    con_loc.close()
+                    print(f"✅ OK: {tabla} sincronizada correctamente")
+
+                except Exception as e:
+                    print(f"❌ ERROR EN {tabla}: {e}")
+                    if con_cloud: con_cloud.rollback()
+                finally:
+                    if con_cloud: con_cloud.close()
+
+        except Exception as e:
+            print(f"🔥 ERROR GLOBAL: {e}")
+        
+        time.sleep(5)
 
 def get_db():
-    # 1. Si estamos en RENDER, conectamos a Supabase
+    # 1. Si estamos en RENDER (nube), conectamos a Supabase usando variables de entorno
     if os.environ.get("RENDER"):
-        return get_db_cloud() # Usamos la función que ya tenés definida
+        try:
+            return psycopg2.connect(
+                host=os.getenv("DB_CLOUD_HOST"),
+                dbname=os.getenv("DB_CLOUD_NAME"),
+                user=os.getenv("DB_CLOUD_USER"),
+                password=os.getenv("DB_CLOUD_PASS"),
+                port=os.getenv("DB_CLOUD_PORT", 6543),
+                sslmode="require"
+            )
+        except Exception as e:
+            print(f"❌ Error conexión Supabase en Render: {e}")
+            return None
 
-    # 2. Si estamos en PC LOCAL, usamos ÚNICAMENTE SQLite
-    # Esto asegura que Flask jamás intente conectar a la nube
-    return get_db_local() 
+    # 2. Si estamos en PC LOCAL, usamos SQLite
+    con = sqlite3.connect(DB_PATH, timeout=30)
+    con.row_factory = sqlite3.Row
+    try:
+        con.execute("PRAGMA journal_mode=WAL;")
+    except:
+        pass
+    return con
 
 
 def ejecutar(cur, conn, query, params=None):
@@ -282,21 +272,17 @@ def ejecutar(cur, conn, query, params=None):
         print("ERROR:", e)
         raise
 def save_offline(tabla, accion, data):
-    try:
-        # Usamos el lock para que Flask no choque con el Worker al escribir
-        with db_lock:
-            con = get_db_local()
-            cur = con.cursor()
-            cur.execute("""
-                INSERT INTO sync_queue (tabla, accion, data, sync) 
-                VALUES (?, ?, ?, 0)
-            """, (tabla, accion, json.dumps(data)))
-            con.commit()
-            con.close()
-        print(f"📦 Cambio guardado en cola: {tabla} -> {accion}")
-    except Exception as e:
-        print(f"❌ ERROR al guardar en sync_queue: {e}")
+    con = get_db_local()
+    cur = con.cursor()
 
+    cur.execute("""
+        INSERT INTO sync_queue(tabla, accion, data, sync)
+        VALUES (?, ?, ?, 0)
+    """, (tabla, accion, json.dumps(data)))  # ✅ FIX
+
+    con.commit()
+    con.close()
+import requests
 
 def internet_ok():
     try:
@@ -1183,6 +1169,7 @@ from datetime import datetime
 
 @app.route("/productos/agregar", methods=["GET", "POST"])
 def agregar_producto():
+    # 🔐 VALIDACIÓN DE PERMISOS CORREGIDA
     permisos = session.get("permisos", {})
     es_admin = session.get("admin")
     tiene_permiso = permisos.get("agregar") == 1
@@ -1192,19 +1179,20 @@ def agregar_producto():
 
     if request.method == "POST":
         try:
-            # 1. Captura con valores por defecto para evitar None
+            # Captura de datos del formulario
             codigo = (request.form.get("codigo") or "").strip().upper()
-            descripcion = (request.form.get("descripcion") or "Sin descripción").strip()
+            descripcion = request.form.get("descripcion")
             litros = int(request.form.get("litros") or 0)
             precio = float(request.form.get("precio") or 0)
-            costo = float(request.form.get("costo") or 0) # <--- AGREGADO
             stock = int(request.form.get("stock") or 0)
-            departamento = request.form.get("departamento") or "General"
+            departamento = request.form.get("departamento")
             
+            # --- 🔥 NUEVO: MANEJO DE FOTO ---
             foto = request.files.get('foto')
-            nombre_foto = ""
+            nombre_foto = "" # Valor por defecto si no suben nada
             
             if foto and foto.filename != '':
+                # Aseguramos un nombre de archivo seguro y único
                 extension = os.path.splitext(foto.filename)[1]
                 nombre_foto = f"{codigo}_{str(uuid.uuid4())[:8]}{extension}"
                 foto.save(os.path.join(UPLOAD_FOLDER, nombre_foto))
@@ -1212,37 +1200,41 @@ def agregar_producto():
             if not codigo:
                 return "❌ Código vacío"
 
+            # Generamos un ID único y la fecha actual
             producto_id = str(uuid.uuid4()) 
             fecha = datetime.now().strftime("%Y-%m-%d")
 
-            # 2. LOCAL (SQLite) - Incluimos 'costo'
+            # ================= LOCAL (SQLite) =================
             con = get_db_local()
             cur = con.cursor()
+            
+            # Agregamos la columna 'foto' al INSERT
             cur.execute("""
                 INSERT INTO productos (
-                    id, codigo, descripcion, litros, precio, costo, stock, fecha, departamento, foto
+                    id, codigo, descripcion, litros, precio, stock, fecha, departamento, foto
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (producto_id, codigo, descripcion, litros, precio, costo, stock, fecha, departamento, nombre_foto))
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (producto_id, codigo, descripcion, litros, precio, stock, fecha, departamento, nombre_foto))
+
             con.commit()
             con.close()
 
-            # 3. SYNC - Diccionario completo (DEBE coincidir con las columnas de Supabase)
+            # ================= SYNC (Cola de sincronización) =================
             data_producto = {
                 "id": producto_id,
                 "codigo": codigo,
                 "descripcion": descripcion,
                 "litros": litros,
                 "precio": precio,
-                "costo": costo, # <--- IMPORTANTE: Si falta aquí, llega NULL a la nube
                 "stock": stock,
                 "fecha": fecha,
                 "departamento": departamento,
-                "foto": nombre_foto 
+                "foto": nombre_foto # 🔥 Enviamos el nombre de la foto a la nube
             }
+            # Guardamos para que el worker lo suba a la nube después
             save_offline("productos", "insert", data_producto)
 
-            flash(f"✅ Producto '{descripcion}' guardado con éxito")
+            flash("✅ Producto guardado localmente con éxito")
             return redirect("/productos/agregar")
 
         except sqlite3.IntegrityError:
@@ -1250,6 +1242,7 @@ def agregar_producto():
         except Exception as e:
             return f"❌ Error: {e}"
 
+    # Si es GET, mostramos el formulario
     return render_template("agregar_producto.html")
 
 
@@ -1561,40 +1554,30 @@ def ventas():
 
 @app.route("/admin/cierres_caja")
 def ver_cierres_caja():
+    # 1. Quitamos la validación de admin para probar que el problema no sea la sesión
     try:
         con = get_db()
         cur = con.cursor()
+        
+        # 2. Usamos el SQL correcto para tu tabla
         ejecutar(cur, con, """
             SELECT id, cajero, fecha_apertura, fecha_cierre, monto_inicial, cierre, diferencia, estado
             FROM caja
             ORDER BY fecha_apertura DESC
         """)
-        rows = cur.fetchall()
-        con.close()
-
-        cierres_procesados = []
-        for r in rows:
-            # Convertimos la fila a un diccionario con nombres claros
-            # Si r ya es un Row de SQLite, dict(r) funciona perfecto
-            if hasattr(r, 'keys'):
-                d = dict(r)
-            else:
-                # Si es una tupla (Postgres), mapeamos manualmente
-                d = {
-                    "id": r[0], "cajero": r[1], "fecha_apertura": r[2], 
-                    "fecha_cierre": r[3], "monto_inicial": r[4], 
-                    "cierre": r[5], "diferencia": r[6], "estado": r[7]
-                }
-            
-            # Limpiamos los valores de dinero para que no sean None
-            d['monto_inicial'] = float(d.get('monto_inicial') or 0)
-            # El cierre y diferencia pueden seguir siendo None para la lógica del HTML
-            cierres_procesados.append(d)
         
-        return render_template("admin_cierres.html", cierres=cierres_procesados)
+        cierres = cur.fetchall()
+        con.close()
+        
+        # 3. Forzamos el renderizado
+        return render_template("admin_cierres.html", cierres=cierres)
+        
     except Exception as e:
-        print(f"🔥 ERROR: {e}")
-        return f"Error: {e}"
+        print(f"ERROR EN REPORTE: {e}")
+        return f"Error al cargar el reporte: {e}"
+
+
+
 
 
 @app.route("/litros")
@@ -2040,14 +2023,13 @@ def carrito_confirmar():
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (venta_id, fecha, subtotal, recargo_valor, descuento_valor, total_final, metodo_pago, cajero_nombre, caja_id))
 
-        # 2. INSERT ITEMS LOCALES
+        # 2. PROCESAR ITEMS E INVENTARIO
         items_para_sync = []
         for item in carrito:
             item_id = str(uuid.uuid4())
-            cant_vendida = int(item["cantidad"])
-            sub_item = float(item["precio"]) * cant_vendida
+            cant = int(item["cantidad"])
+            sub_item = float(item["precio"]) * cant
             
-            # Consultamos litros reales para el registro de venta_items
             cur.execute("SELECT litros FROM productos WHERE id = ?", (item["id"],))
             res_prod = cur.fetchone()
             
@@ -2056,21 +2038,22 @@ def carrito_confirmar():
                 try: litros_unidad = float(res_prod["litros"] or 0)
                 except: litros_unidad = float(res_prod[0] or 0)
 
-            litros_totales_item = litros_unidad * cant_vendida
+            litros_totales_item = litros_unidad * cant
 
+            # A. Insertar item de venta
             cur.execute("""
                 INSERT INTO venta_items (id, venta_id, producto_id, cantidad, litros_total, subtotal)
                 VALUES (?, ?, ?, ?, ?, ?)
-            """, (item_id, venta_id, item["id"], cant_vendida, litros_totales_item, sub_item))
+            """, (item_id, venta_id, item["id"], cant, litros_totales_item, sub_item))
             
-            # 🛑 NOTA: NO HACEMOS "UPDATE productos SET stock..." AQUÍ.
-            # El Worker se encargará de traer el stock actualizado de Supabase.
+            # B. DESCONTAR STOCK LOCAL (SQLite)
+            cur.execute("UPDATE productos SET stock = stock - ? WHERE id = ?", (cant, item["id"]))
 
             items_para_sync.append({
                 "id": item_id, 
                 "venta_id": venta_id, 
                 "producto_id": item["id"],
-                "cantidad": cant_vendida, 
+                "cantidad": cant, 
                 "litros_total": litros_totales_item,
                 "subtotal": sub_item
             })
@@ -2078,7 +2061,6 @@ def carrito_confirmar():
         con.commit()
 
         # ================= SYNC =================
-        # Guardamos la venta en la cola de sincronización
         save_offline("ventas", "insert", {
             "id": venta_id, "fecha": fecha, "total": subtotal,
             "recargo": recargo_valor, "descuento": descuento_valor,
@@ -2088,12 +2070,8 @@ def carrito_confirmar():
 
         for item_s in items_para_sync:
             save_offline("venta_items", "insert", item_s)
-            
-            # ✅ MANDAMOS LA ORDEN DE RESTA PARA LA NUBE
-            save_offline("productos", "update", {
-                "id": item_s["producto_id"],
-                "stock_restar": item_s["cantidad"] 
-            })
+            # Orden específica para que el worker reste en Supabase
+            save_offline("productos", "update", {"id": item_s["producto_id"], "stock_restar": item_s["cantidad"]})
 
         session["carrito"] = []
         return redirect("/ventas_ui")
@@ -2103,7 +2081,6 @@ def carrito_confirmar():
         return f"❌ Error en venta: {e}"
     finally:
         if con: con.close()
-
 
 @app.route("/caja/cerrar", methods=["POST"])
 def cierre_caja():
@@ -2459,7 +2436,7 @@ def crear_cajero():
         if not usuario or not password:
             return "❌ Datos incompletos"
         
-        con = get_db_local()
+        con = get_db_local() # Aseguramos primero el guardado local
         cur = con.cursor()
         
         try:
@@ -2468,40 +2445,27 @@ def crear_cajero():
                 INSERT INTO cajeros (usuario, password, rol)
                 VALUES (?, ?, 'cajero')
             """, (usuario, password))
-            
-            # 2. 🔥 RECUPERAR EL ID GENERADO
-            # Esto obtiene el ID que SQLite acaba de crear automáticamente
-            nuevo_id = cur.lastrowid
             con.commit()
             
-            # 3. MANDAR A LA COLA DE SYNC CON EL ID REAL
-            # Ahora data_cajero ya no tiene el ID en null
+            # 2. 🔥 MANDAR A LA COLA DE SYNC
+            # Pasamos los datos que Supabase necesita
             data_cajero = {
-                "id": nuevo_id,
                 "usuario": usuario,
                 "password": password,
-                "rol": "cajero",
-                "puede_vender": 1,
-                "puede_ver_pedidos": 0,
-                "puede_ver_reportes": 0,
-                "puede_ver_stock": 0,
-                "puede_agregar_productos": 0,
-                "agregar_productos": 0
+                "rol": "cajero"
             }
             save_offline("cajeros", "insert", data_cajero)
             
-            flash(f"✅ Cajero {usuario} (ID: {nuevo_id}) creado y sincronizando")
+            flash("✅ Cajero creado y programado para sincronizar")
             return redirect("/dashboard")
             
         except Exception as e:
             con.rollback()
-            print(f"❌ Error creando cajero: {e}")
             return f"❌ Error: {e}"
         finally:
             con.close()
             
     return render_template("crear_cajero.html")
-
 
 @app.route("/cajeros")
 def cajeros():
@@ -2825,23 +2789,18 @@ def inicializar_nube():
         except Exception as e:
             print(f"⚠️ Error inicializando nube: {e}")
 
-
-# 2. Arranque del sistema corregido para OFFLINE
+# 2. Arranque del sistema
 if __name__ == "__main__":
-    # 🌐 Solo intentamos inicializar la nube si hay internet
-    # y lo hacemos en un hilo para que NO TRABE el inicio local
-    if internet_ok():
-        threading.Thread(target=inicializar_nube, daemon=True).start()
-    else:
-        print("🌐 Modo Offline: Saltando inicialización de nube...")
+    # Solo inicializamos la nube si estamos en Render
+    inicializar_nube()
 
-    # Iniciamos el Worker de sincronización
-    # Él ya tiene su propio bucle y manejo de errores
+    # Iniciamos el Worker de sincronización (SOLO UNA VEZ)
+    # Esto corre tanto en PC como en Render (aunque en Render no hará nada si no hay SQLite)
     threading.Thread(target=sync_worker, daemon=True).start()
 
-    # Configuración de puerto
+    # Configuración de puerto para Render o Local
     puerto = int(os.environ.get("PORT", 5000))
     
-    # Arrancamos la app (debug=False es vital cuando usas hilos)
+    # Arrancamos la app
     es_produccion = os.environ.get("RENDER")
-    app.run(host="0.0.0.0", port=puerto, debug=False)
+    app.run(host="0.0.0.0", port=puerto, debug=not es_produccion)
