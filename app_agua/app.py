@@ -72,6 +72,12 @@ def get_db_local():
     return con
 
     
+import time
+import json
+import decimal  # Necesario para procesar números de Supabase
+import sqlite3
+import psycopg2
+
 def sync_worker():
     print("🚀 WORKER INICIADO Y ESPERANDO DATOS...")
     while True:
@@ -81,6 +87,7 @@ def sync_worker():
                 continue
 
             con = get_db_local()
+            cur = con.row_factory = sqlite3.Row # Aseguramos acceso por nombre de columna
             cur = con.cursor()
             
             # Verificar registros pendientes (sync = 0)
@@ -125,19 +132,28 @@ def sync_worker():
                                 diferencia = EXCLUDED.diferencia
                         """, (data["id"], data.get("cajero"), data.get("fecha_apertura"), data.get("fecha_cierre"), data.get("cierre", 0), data.get("estado", "ABIERTA"), data.get("apertura", 0), data.get("diferencia", 0)))
 
-                    # ================= PRODUCTOS (ACTUALIZADO CON FOTO) =================
+                    # ================= PRODUCTOS (RESTA STOCK) =================
                     elif tabla == "productos":
-                        cur_cloud.execute("""
-                            INSERT INTO productos(id, codigo, descripcion, litros, precio, stock, fecha, departamento, foto)
-                            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) 
-                            ON CONFLICT (id) DO UPDATE SET
-                                precio = EXCLUDED.precio,
-                                stock = EXCLUDED.stock,
-                                descripcion = EXCLUDED.descripcion,
-                                foto = EXCLUDED.foto
-                        """, (data["id"], data["codigo"], data["descripcion"], data["litros"], 
-                              data["precio"], data["stock"], data["fecha"], data.get("departamento"), 
-                              data.get("foto"))) # 🔥 Se agrega data.get("foto")
+                        if "stock_restar" in data:
+                            # Lógica para descontar stock en Supabase
+                            cur_cloud.execute("""
+                                UPDATE productos 
+                                SET stock = stock - %s 
+                                WHERE id = %s
+                            """, (data["stock_restar"], data["id"]))
+                        else:
+                            # Lógica normal para insertar o editar producto
+                            cur_cloud.execute("""
+                                INSERT INTO productos(id, codigo, descripcion, litros, precio, stock, fecha, departamento, foto)
+                                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) 
+                                ON CONFLICT (id) DO UPDATE SET
+                                    precio = EXCLUDED.precio,
+                                    stock = EXCLUDED.stock,
+                                    descripcion = EXCLUDED.descripcion,
+                                    foto = EXCLUDED.foto
+                            """, (data["id"], data["codigo"], data["descripcion"], data["litros"], 
+                                  data["precio"], data["stock"], data["fecha"], data.get("departamento"), 
+                                  data.get("foto")))
 
                     # ================= VENTAS =================
                     elif tabla == "ventas":
@@ -154,7 +170,7 @@ def sync_worker():
                         """, (data["id"], data["venta_id"], data["producto_id"], data["cantidad"], data.get("litros_total",0), data["subtotal"]))
                         
 
-                    # ================= PEDIDOS (NUEVO) =================
+                    # ================= PEDIDOS =================
                     elif tabla == "pedidos":
                         cur_cloud.execute("""
                             INSERT INTO pedidos (id, cliente_id, promo_id, fecha, estado)
@@ -162,7 +178,7 @@ def sync_worker():
                             ON CONFLICT (id) DO UPDATE SET estado = EXCLUDED.estado
                         """, (data["id"], data.get("cliente_id"), data.get("promo_id"), data.get("fecha"), data.get("estado", "Pendiente")))
 
-                    # ================= USUARIOS / CLIENTES (NUEVO) =================
+                    # ================= USUARIOS =================
                     elif tabla == "usuarios":
                         cur_cloud.execute("""
                             INSERT INTO usuarios (nombre, telefono, direccion, password)
@@ -176,7 +192,7 @@ def sync_worker():
                             VALUES (%s,%s,%s) ON CONFLICT (usuario) DO NOTHING
                         """, (data["usuario"], data["password"], data.get("rol", "cajero")))
 
-                    # ================= PROMOS / LITROS =================
+                    # ================= PROMOS =================
                     elif tabla == "promos":
                         cur_cloud.execute("INSERT INTO promos(id, nombre, descripcion, precio, activa) VALUES (%s,%s,%s,%s,%s) ON CONFLICT (id) DO NOTHING", 
                                         (data["id"], data["nombre"], data["descripcion"], data["precio"], data["activa"]))
@@ -205,7 +221,6 @@ def sync_worker():
             print(f"🔥 ERROR GLOBAL: {e}")
         
         time.sleep(5)
-
 
 def get_db():
     # 1. Si estamos en RENDER (nube), conectamos a Supabase usando variables de entorno
@@ -1964,35 +1979,37 @@ def carrito_confirmar():
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (venta_id, fecha, subtotal, recargo_valor, descuento_valor, total_final, metodo_pago, cajero_nombre, caja_id))
 
-        # 2. INSERT ITEMS LOCALES
+        # 2. PROCESAR ITEMS E INVENTARIO
         items_para_sync = []
         for item in carrito:
             item_id = str(uuid.uuid4())
-            sub_item = float(item["precio"]) * int(item["cantidad"])
+            cant = int(item["cantidad"])
+            sub_item = float(item["precio"]) * cant
             
-            # 🔥 FIX DEFINITIVO: Consultamos los litros reales a la tabla productos
-            # Esto evita que dependamos de si el carrito tiene o no el dato
             cur.execute("SELECT litros FROM productos WHERE id = ?", (item["id"],))
             res_prod = cur.fetchone()
             
-            # Extraemos el valor del litro (manejando si es Row de SQLite o tupla)
             litros_unidad = 0
             if res_prod:
                 try: litros_unidad = float(res_prod["litros"] or 0)
                 except: litros_unidad = float(res_prod[0] or 0)
 
-            litros_totales_item = litros_unidad * int(item["cantidad"])
+            litros_totales_item = litros_unidad * cant
 
+            # A. Insertar item de venta
             cur.execute("""
                 INSERT INTO venta_items (id, venta_id, producto_id, cantidad, litros_total, subtotal)
                 VALUES (?, ?, ?, ?, ?, ?)
-            """, (item_id, venta_id, item["id"], item["cantidad"], litros_totales_item, sub_item))
+            """, (item_id, venta_id, item["id"], cant, litros_totales_item, sub_item))
             
+            # B. DESCONTAR STOCK LOCAL (SQLite)
+            cur.execute("UPDATE productos SET stock = stock - ? WHERE id = ?", (cant, item["id"]))
+
             items_para_sync.append({
                 "id": item_id, 
                 "venta_id": venta_id, 
                 "producto_id": item["id"],
-                "cantidad": item["cantidad"], 
+                "cantidad": cant, 
                 "litros_total": litros_totales_item,
                 "subtotal": sub_item
             })
@@ -2000,16 +2017,17 @@ def carrito_confirmar():
         con.commit()
 
         # ================= SYNC =================
-        data_venta_sync = {
+        save_offline("ventas", "insert", {
             "id": venta_id, "fecha": fecha, "total": subtotal,
             "recargo": recargo_valor, "descuento": descuento_valor,
             "total_final": total_final, "metodo_pago": metodo_pago, 
             "cajero": cajero_nombre, "caja_id": caja_id
-        }
-        save_offline("ventas", "insert", data_venta_sync)
+        })
 
         for item_s in items_para_sync:
             save_offline("venta_items", "insert", item_s)
+            # Orden específica para que el worker reste en Supabase
+            save_offline("productos", "update", {"id": item_s["producto_id"], "stock_restar": item_s["cantidad"]})
 
         session["carrito"] = []
         return redirect("/ventas_ui")
