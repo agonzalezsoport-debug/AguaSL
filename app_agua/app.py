@@ -683,6 +683,30 @@ def buscar_productos():
 
     con.close()
     return jsonify(data)
+@app.route("/pedidos/limpiar_entregados", methods=["POST"])
+def limpiar_pedidos_entregados():
+    if not session.get("admin") and not session.get("puede_ver_pedidos"):
+        return "❌ Sin permisos", 403
+
+    con = get_db()
+    cur = con.cursor()
+
+    try:
+        # 1. Borramos físicamente los entregados
+        ejecutar(cur, con, "DELETE FROM pedidos WHERE estado = 'entregado'")
+        con.commit()
+
+        # 2. 🔥 SYNC: Informamos a la cola offline para que los borre de la nube también
+        save_offline("pedidos", "delete_completed", {"estado": "entregado"})
+
+    except Exception as e:
+        if con: con.rollback()
+        return f"❌ Error al limpiar: {e}"
+    finally:
+        if con: con.close()
+
+    return redirect("/pedidos")
+
 
 # ================== LOGIN ADMIN ==================
 @app.route("/login", methods=["GET", "POST"])
