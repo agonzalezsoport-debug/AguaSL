@@ -420,6 +420,24 @@ def ver_carrito():
     carrito = session.get("carrito_cliente", [])
     total = sum(item['precio'] * item['cantidad'] for item in carrito)
     return render_template("carrito.html", carrito=carrito, total=total)
+@app.route('/api/pedidos/count')
+def count_pedidos():
+    con = None
+    try:
+        con = get_db()
+        cur = con.cursor()
+        cur.execute("SELECT COUNT(*) FROM pedidos WHERE estado = 'pendiente'")
+        resultado = cur.fetchone() # Esto devuelve algo como (7,)
+        
+        # Extraemos el primer elemento de la tupla
+        cantidad = resultado[0] if resultado else 0
+        
+        return {"cantidad": int(cantidad)}
+    except Exception as e:
+        print(f"❌ Error en contador: {e}")
+        return {"cantidad": 0}
+    finally:
+        if con: con.close()
 
 # --- VACIAR CARRITO ---
 @app.route("/carrito/vaciar")
