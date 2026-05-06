@@ -666,47 +666,79 @@ def login():
     if request.method == "POST":
         password_ingresada = request.form.get("password")
 
-        con = get_db_local()
-        user = con.execute("SELECT password FROM usuarios WHERE nombre='admin'").fetchone()
-        con.close()
-
-        # 🛡️ VERIFICACIÓN SEGURA
-        if user and check_password_hash(user["password"], password_ingresada):
-            session["admin"] = True
-            return redirect("/dashboard")
+        # 1. Verificamos si existe el usuario 'admin' en la DB para validar que el sistema está ok
+        con = get_db_local() # O get_db() según tu alias
+        cur = con.cursor()
         
-        return "❌ Clave incorrecta"
+        try:
+            # Buscamos al usuario admin
+            cur.execute("SELECT nombre FROM usuarios WHERE nombre = ?", ("admin",))
+            usuario = cur.fetchone()
+        except Exception as e:
+            print(f"🔥 Error en query de login: {e}")
+            return "❌ Error interno de base de datos", 500
+        finally:
+            con.close()
 
+        if usuario:
+            # 2. VALIDACIÓN CLAVE: Comparamos contra la variable ADMIN_PASSWORD cargada del .env
+            # Esto ignora el hash de la DB y usa lo que definiste en el archivo de configuración
+            if password_ingresada == ADMIN_PASSWORD:
+                session["admin"] = True
+                session.permanent = True # Para que no se cierre la sesión rápido
+                return redirect("/dashboard")
+            else:
+                return "❌ Clave incorrecta"
+        else:
+            return "❌ El usuario administrador no existe en la base de datos local"
 
+    return render_template("login.html")
 
 import os
 
-from werkzeug.security import generate_password_hash
-
 @app.route("/admin/cambiar_clave", methods=["GET", "POST"])
 def cambiar_clave():
-    if not session.get("admin"): return redirect("/login")
+    # 1. LA DECLARACIÓN GLOBAL VA PRIMERO QUE NADA
+    global ADMIN_PASSWORD 
+
+    # Seguridad: si no es admin, afuera
+    if not session.get("admin"):
+        return redirect("/login")
 
     if request.method == "POST":
+        actual = request.form.get("clave_actual")
         nueva = request.form.get("nueva_clave")
-        
-        # 🛡️ GENERAMOS EL HASH (Esto convierte "1234" en algo como "pbkdf2:sha256:...")
-        password_encriptada = generate_password_hash(nueva)
 
-        with db_lock:
-            con = get_db_local()
-            # Guardamos el hash en la DB local
-            con.execute("UPDATE usuarios SET password = ? WHERE nombre = 'admin'", (password_encriptada,))
+        # 2. Ahora sí podés usarla y modificarla
+        if actual != ADMIN_PASSWORD:
+            flash("❌ La clave actual es incorrecta")
+            return redirect("/admin/cambiar_clave")
+
+        # Actualizar en memoria
+        ADMIN_PASSWORD = nueva
+
+        # 3. Guardar en el archivo .env (el resto del código sigue igual...)
+        try:
+            lineas = []
+            if os.path.exists(".env"):
+                with open(".env", "r") as f:
+                    lineas = f.readlines()
+
+            with open(".env", "w") as f:
+                encontrado = False
+                for linea in lineas:
+                    if linea.startswith("ADMIN_PASSWORD="):
+                        f.write(f"ADMIN_PASSWORD={nueva}\n")
+                        encontrado = True
+                    else:
+                        f.write(linea)
+                if not encontrado:
+                    f.write(f"ADMIN_PASSWORD={nueva}\n")
             
-            # Encolamos el cambio para Supabase
-            data_sync = json.dumps({"nombre": "admin", "password": password_encriptada})
-            con.execute("INSERT INTO sync_queue (tabla, data, sync) VALUES (?, ?, 0)", ("usuarios", data_sync))
-            
-            con.commit()
-            con.close()
-        
-        flash("✅ Clave actualizada y encriptada correctamente")
-        return redirect("/dashboard")
+            flash("✅ Clave actualizada con éxito")
+            return redirect("/dashboard")
+        except Exception as e:
+            flash(f"⚠️ Error al guardar: {e}")
 
     return render_template("cambiar_clave.html")
 
