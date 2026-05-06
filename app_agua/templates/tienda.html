@@ -1,225 +1,182 @@
 {% extends "base.html" %}
 {% block content %}
 
-<div class="catalogo-container">
+<div class="tienda-container" style="max-width: 1200px; margin: auto; padding: 20px;">
     
-    <!-- CABECERA ESTILIZADA -->
-    <header class="catalogo-header">
-        <h2 class="titulo-principal">🌊 Nuestro Catálogo</h2>
-        <p class="subtitulo">Calidad y frescura en cada producto</p>
-    </header>
+    <!-- CABECERA TIENDA -->
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px;">
+        <h2 style="font-weight: 800; color: #333;">🛒 Tienda Online</h2>
+        <a href="/carrito" class="btn-carrito-fijo">
+            <span>Ver mi pedido</span> 🛍️
+        </a>
+    </div>
 
-    <!-- FILTROS -->
-    <nav class="filtros-nav">
+    <!-- FILTROS POR DEPARTAMENTO -->
+    <div class="filtros" style="margin-bottom: 25px; display: flex; gap: 10px; overflow-x: auto; padding-bottom: 10px;">
         <button class="badge-filter active">Todos</button>
         <button class="badge-filter">Agua</button>
         <button class="badge-filter">Sodas</button>
         <button class="badge-filter">Accesorios</button>
-    </nav>
+    </div>
 
     <!-- REJILLA DE PRODUCTOS -->
-    <div class="productos-grid">
+    <div class="productos-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 25px;">
+        
         {% for p in productos %}
-        <div class="producto-card">
+        <div class="producto-card-tienda">
             
-            <!-- CONTENEDOR DE IMAGEN -->
+            <!-- 🖼️ IMAGEN DEL PRODUCTO -->
             <div class="foto-wrapper">
                 {% if p[8] %} 
-                    <img src="/static/productos/{{ p[8] }}" alt="{{ p[1] }}" class="img-producto">
+                    <img src="/static/productos/{{ p[8] }}" alt="{{ p[1] }}" class="img-real">
                 {% else %}
                     <div class="emoji-fallback">
                         {% if 'Agua' in p[1] %}💧{% elif 'Soda' in p[1] %}🍾{% else %}📦{% endif %}
                     </div>
                 {% endif %}
-                <span class="tag-flotante">{{ p[5] }}</span>
             </div>
             
-            <!-- DETALLES DEL PRODUCTO -->
-            <div class="info-producto">
-                <h3 class="prod-nombre">{{ p[1] }}</h3>
-                <p class="prod-medida">Presentación: {{ p[4] }} Litros</p>
+            <!-- INFO DEL PRODUCTO -->
+            <div style="padding: 20px;">
+                <span class="tag-departamento">{{ p[5] }}</span>
+                <h3 class="prod-titulo">{{ p[1] }}</h3>
+                <p class="prod-info">Presentación: {{ p[4] }} Litros</p>
                 
-                <div class="divisor"></div>
-                
-                <div class="precio-tag">
-                    <span class="signo">$</span>
-                    <span class="monto">{{ "%.2f"|format(p[2]) }}</span>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 20px;">
+                    <span class="prod-precio">${{ "%.2f"|format(p[2]) }}</span>
+                    
+                    {# 🔐 LÓGICA DE ACCESO: LOGIN O CARRITO #}
+                    {% if session.get('cliente_id') or session.get('admin') %}
+                        <!-- SI ESTÁ LOGUEADO: Formulario que envía el código -->
+                        <form action="/carrito/agregar" method="POST" style="margin: 0;">
+                            <input type="hidden" name="codigo" value="{{ p[1] }}"> {# p[1] suele ser el código/descripción #}
+                            <input type="hidden" name="cantidad" value="1">
+                            <button type="submit" class="btn-add">
+                                ➕ Agregar
+                            </button>
+                        </form>
+                    {% else %}
+                        <!-- SI NO ESTÁ LOGUEADO: Link directo al login (Evita el error de código vacío) -->
+                        <a href="/login_cliente" class="btn-add" style="text-decoration: none; display: inline-block; text-align: center; line-height: 1.5;">
+                            ➕ Agregar
+                        </a>
+                    {% endif %}
                 </div>
             </div>
 
         </div>
         {% endfor %}
+
     </div>
 </div>
 
 <style>
-    /* Configuración General */
-    .catalogo-container {
-        max-width: 1200px;
-        margin: auto;
-        padding: 40px 20px;
-        font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-    }
-
-    .catalogo-header {
-        text-align: center;
-        margin-bottom: 40px;
-    }
-
-    .titulo-principal {
-        font-size: 2.5rem;
-        font-weight: 800;
-        color: #1a202c;
-        margin-bottom: 10px;
-    }
-
-    .subtitulo {
-        color: #718096;
-        font-size: 1.1rem;
-    }
-
-    /* Navegación de Filtros */
-    .filtros-nav {
-        display: flex;
-        gap: 12px;
-        justify-content: center;
-        margin-bottom: 50px;
-        flex-wrap: wrap;
-    }
-
-    .badge-filter {
-        background: #fff;
-        border: 2px solid #e2e8f0;
-        padding: 10px 25px;
-        border-radius: 50px;
-        font-weight: 700;
-        color: #4a5568;
-        cursor: pointer;
-        transition: 0.3s all ease;
-    }
-
-    .badge-filter.active, .badge-filter:hover {
-        background: #007bff;
-        color: white;
-        border-color: #007bff;
-        box-shadow: 0 4px 12px rgba(0,123,255,0.2);
-    }
-
-    /* Grid de Productos */
-    .productos-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-        gap: 35px;
-    }
-
-    /* Tarjeta de Producto */
-    .producto-card {
+    .producto-card-tienda {
         background: white;
-        border-radius: 24px;
+        border-radius: 25px;
         overflow: hidden;
-        border: 1px solid #edf2f7;
-        box-shadow: 0 10px 25px rgba(0,0,0,0.03);
-        transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.4s ease;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+        border: 1px solid #f0f0f0;
+        transition: all 0.3s ease;
     }
 
-    .producto-card:hover {
+    .producto-card-tienda:hover {
         transform: translateY(-10px);
-        box-shadow: 0 20px 40px rgba(0,0,0,0.08);
-        border-color: #cbd5e0;
+        box-shadow: 0 20px 40px rgba(0,123,255,0.1);
+        border-color: #007bff;
     }
 
-    /* Foto y Tags */
     .foto-wrapper {
-        height: 220px;
-        background: #f8fafc;
+        height: 180px; 
+        background: #f8f9fa; 
         display: flex;
         align-items: center;
         justify-content: center;
         position: relative;
     }
 
-    .img-producto {
+    .img-real {
         width: 100%;
         height: 100%;
-        object-fit: contain;
-        padding: 25px;
-        transition: transform 0.5s ease;
-    }
-
-    .producto-card:hover .img-producto {
-        transform: scale(1.1);
-    }
-
-    .tag-flotante {
-        position: absolute;
-        top: 15px;
-        right: 15px;
-        background: rgba(255, 255, 255, 0.9);
-        padding: 4px 12px;
-        border-radius: 50px;
-        font-size: 0.7rem;
-        font-weight: 800;
-        color: #007bff;
-        text-transform: uppercase;
-        backdrop-filter: blur(4px);
-        box-shadow: 0 2px 5px rgba(0,0,0,0.05);
-    }
-
-    /* Info de Texto */
-    .info-producto {
-        padding: 25px;
-        text-align: center;
-    }
-
-    .prod-nombre {
-        font-size: 1.3rem;
-        font-weight: 700;
-        color: #2d3748;
-        margin: 0 0 5px 0;
-    }
-
-    .prod-medida {
-        color: #a0aec0;
-        font-size: 0.9rem;
-        margin-bottom: 15px;
-    }
-
-    .divisor {
-        height: 1px;
-        background: #edf2f7;
-        width: 50%;
-        margin: 0 auto 15px;
-    }
-
-    /* Precio */
-    .precio-tag {
-        display: flex;
-        align-items: baseline;
-        justify-content: center;
-        color: #28a745;
-    }
-
-    .signo {
-        font-size: 1.2rem;
-        font-weight: 700;
-        margin-right: 2px;
-    }
-
-    .monto {
-        font-size: 2rem;
-        font-weight: 800;
-        letter-spacing: -1px;
+        object-fit: contain; 
+        padding: 15px; 
     }
 
     .emoji-fallback {
         font-size: 5rem;
-        filter: drop-shadow(0 5px 10px rgba(0,0,0,0.1));
     }
 
-    /* Responsive */
-    @media (max-width: 600px) {
-        .titulo-principal { font-size: 1.8rem; }
-        .productos-grid { gap: 20px; }
+    .tag-departamento {
+        font-size: 0.75rem;
+        color: #007bff;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+
+    .prod-titulo {
+        margin: 5px 0;
+        color: #333;
+        font-size: 1.3rem;
+        font-weight: 700;
+    }
+
+    .prod-info {
+        color: #888;
+        font-size: 0.9rem;
+        margin: 0;
+    }
+
+    .prod-precio {
+        font-size: 1.6rem;
+        font-weight: 800;
+        color: #28a745;
+    }
+
+    .btn-carrito-fijo {
+        background: #111;
+        color: white;
+        padding: 12px 25px;
+        border-radius: 50px;
+        text-decoration: none;
+        font-weight: 700;
+        display: flex;
+        gap: 10px;
+    }
+
+    .btn-add {
+        background: #007bff;
+        color: white;
+        border: none;
+        padding: 12px 22px;
+        border-radius: 15px;
+        font-weight: 700;
+        cursor: pointer;
+        transition: 0.3s;
+        font-family: inherit;
+        font-size: 1rem;
+    }
+
+    .btn-add:hover {
+        background: #0056b3;
+        transform: scale(1.05);
+    }
+
+    .badge-filter {
+        background: white;
+        border: 1px solid #ddd;
+        padding: 10px 22px;
+        border-radius: 50px;
+        font-weight: 600;
+        cursor: pointer;
+        white-space: nowrap;
+        color: #666;
+    }
+
+    .badge-filter.active {
+        background: #007bff;
+        color: white;
+        border-color: #007bff;
     }
 </style>
 
