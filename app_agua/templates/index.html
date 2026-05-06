@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="/static/style.css">
     <title>RINPA SRL - EN DESARROLLO</title>
-    <!-- Google Fonts para mejorar la estética -->
+    <!-- Google Fonts -->
     <link href="https://googleapis.com" rel="stylesheet">
 </head>
 
@@ -28,7 +28,7 @@
         <p>Pedí agua fácil y rápido desde tu celular</p>
 
         <div class="actions">
-            <!-- BOTÓN TIENDA ONLINE RESALTADO -->
+            <!-- BOTÓN TIENDA ONLINE -->
             <a href="/tienda" class="btn btn-tienda">🛒 TIENDA ONLINE</a>
             <hr style="opacity: 0.3; margin: 20px 0;">
             
@@ -55,29 +55,34 @@
     <h2 class="section-title">Nuestros Productos</h2>
     <div class="productos-grid">
         
-        {# Este bucle recorre los productos que enviamos desde Python #}
+        {# 
+           Basado en tu consulta: SELECT descripcion, precio, foto 
+           prod[0] = descripcion
+           prod[1] = precio
+           prod[2] = foto
+        #}
         {% for prod in productos %}
         <div class="producto-card">
-            <div class="producto-icon">
+            <div class="producto-icon" style="height: 150px; display: flex; align-items: center; justify-content: center;">
                 {% if prod[2] %} 
-                    {# Si el producto tiene foto (columna 2 del SELECT) #}
-                    <img src="{{ prod[2] }}" alt="Producto" style="width: 80px; height: 80px; object-fit: contain;">
+                    {# Usamos la ruta que te funcionó en la tienda #}
+                    <img src="/static/productos/{{ prod[2] }}" alt="{{ prod[0] }}" style="max-width: 100%; max-height: 100%; object-fit: contain;">
                 {% else %}
-                    {# Icono por defecto si no hay foto #}
-                    💧
+                    {# Emoji fallback si no hay imagen en la DB #}
+                    <span style="font-size: 4rem;">💧</span>
                 {% endif %}
             </div>
-
-            <h3>{{ prod[0] }}</h3> {# Descripción (columna 0) #}
+            
+            <h3 style="margin-top: 15px;">{{ prod[0] }}</h3>
             <p>Agua purificada de máxima calidad para tu hogar.</p>
             
-            <span class="price">${{ "{:,.0f}".format(prod[1]) }}</span> {# Precio (columna 1) #}
+            <span class="price">${{ "{:,.0f}".format(prod[1]) }}</span>
             
             <a href="/tienda" class="btn-buy">Comprar</a>
         </div>
         {% else %}
-        <div style="grid-column: 1/-1; text-align: center; padding: 20px;">
-            <p>No hay productos destacados para mostrar en este momento.</p>
+        <div style="grid-column: 1/-1; text-align: center; padding: 40px;">
+            <p>No hay productos destacados disponibles.</p>
         </div>
         {% endfor %}
 
