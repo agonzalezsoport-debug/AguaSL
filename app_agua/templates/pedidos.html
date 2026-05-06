@@ -1,44 +1,61 @@
-
 {% extends "base.html" %}
 
 {% block content %}
 
 <div class="container">
 
-    <h2>📦 Gestión de Pedidos</h2>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h2>📦 Gestión de Pedidos</h2>
+        
+        <!-- BOTÓN PARA LIMPIAR ENTREGADOS -->
+        <form action="/pedidos/limpiar_entregados" method="POST" 
+              onsubmit="return confirm('¿Estás seguro de eliminar permanentemente todos los pedidos entregados?');">
+            <button type="submit" style="background: #dc3545; color: white; border: none; padding: 10px 15px; border-radius: 8px; cursor: pointer; font-weight: bold; display: flex; align-items: center; gap: 8px;">
+                <i class="fas fa-trash-alt"></i> Limpiar Entregados
+            </button>
+        </form>
+    </div>
+
+    {% if not pedidos %}
+        <p style="text-align: center; color: #666; margin-top: 50px;">No hay pedidos registrados.</p>
+    {% endif %}
 
     {% for p in pedidos %}
-    <div class="card">
+    <div class="card" style="margin-bottom: 15px; border-left: 5px solid {% if p[4] == 'entregado' %}#28a745{% elif p[4] == 'pendiente' %}#ffc107{% else %}#2563eb{% endif %};">
 
         <!-- INFO DEL PEDIDO -->
-        <strong>Pedido #{{p[0]}}</strong><br>
-        Cliente: {{p[1]}}<br>
-        Promo: {{p[2]}}<br>
-        Fecha: {{p[3]}}<br><br>
+        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+            <div>
+                <strong>Pedido #{{p[0]}}</strong><br>
+                <small>👤 Cliente:</small> {{p[1]}}<br>
+                <small>🎁 Promo:</small> {{p[2]}}<br>
+                <small>📅 Fecha:</small> {{p[3]}}
+            </div>
+            
+            <!-- ESTADO ACTUAL -->
+            <span class="estado {{p[4]|lower|replace(' ', '')}}" style="padding: 5px 10px; border-radius: 5px; font-size: 0.8em; font-weight: bold; text-transform: uppercase;">
+                {{p[4]}}
+            </span>
+        </div>
 
-        <!-- ESTADO ACTUAL -->
-        <span class="estado {{p[4]|lower|replace(' ', '')}}">
-            {{p[4]}}
-        </span>
-
-        <br><br>
+        <br>
 
         <!-- BOTONES PARA CAMBIAR ESTADO -->
         <div style="display:flex; gap:10px; flex-wrap:wrap;">
 
-            <a href="/pedido/estado/{{p[0]}}/pendiente" class="btn">
+            <a href="/pedido/estado/{{p[0]}}/pendiente" class="btn" style="background: #6c757d;">
                 Pendiente
             </a>
 
-            <a href="/pedido/estado/{{p[0]}}/enproceso" class="btn">
+            <a href="/pedido/estado/{{p[0]}}/enproceso" class="btn" style="background: #17a2b8;">
                 En proceso
             </a>
 
-            <a href="/pedido/estado/{{p[0]}}/entregado" class="btn">
+            <a href="/pedido/estado/{{p[0]}}/entregado" class="btn" style="background: #28a745;">
                 Entregado
             </a>
 
-            <a href="/pedido/estado/{{p[0]}}/cancelado" class="btn">
+            <a href="/pedido/estado/{{p[0]}}/cancelado" class="btn" style="background: #dc3545;">
                 Cancelar
             </a>
 
@@ -48,5 +65,23 @@
     {% endfor %}
 
 </div>
+
+<style>
+    /* Estilos extra para los botones y estados */
+    .btn {
+        text-decoration: none;
+        color: white;
+        padding: 8px 12px;
+        border-radius: 5px;
+        font-size: 0.9em;
+        transition: opacity 0.2s;
+    }
+    .btn:hover { opacity: 0.8; }
+    
+    .estado.pendiente { background: #fff3cd; color: #856404; }
+    .estado.enproceso { background: #cce5ff; color: #004085; }
+    .estado.entregado { background: #d4edda; color: #155724; }
+    .estado.cancelado { background: #f8d7da; color: #721c24; }
+</style>
 
 {% endblock %}
