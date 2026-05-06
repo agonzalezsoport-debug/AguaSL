@@ -2071,37 +2071,41 @@ def carrito_confirmar():
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (venta_id, fecha, subtotal, recargo_valor, descuento_valor, total_final, metodo_pago, cajero_nombre, caja_id))
 
-        # 2. PROCESAR ITEMS E INVENTARIO
+        # 2. INSERT ITEMS LOCALES
         items_para_sync = []
         for item in carrito:
             item_id = str(uuid.uuid4())
-            cant = int(item["cantidad"])
-            sub_item = float(item["precio"]) * cant
+            cant_vendida = int(item["cantidad"])
+            sub_item = float(item["precio"]) * cant_vendida
             
-            cur.execute("SELECT litros FROM productos WHERE id = ?", (item["id"],))
-            res_prod = cur.fetchone()
+            # --- CORRECCIÓN DE LITROS ---
+            litros_totales_item = 0
             
-            litros_unidad = 0
-            if res_prod:
-                try: litros_unidad = float(res_prod["litros"] or 0)
-                except: litros_unidad = float(res_prod[0] or 0)
+            # SÓLO buscamos litros si NO es una promo
+            if "promo_" not in str(item["id"]):
+                cur.execute("SELECT litros FROM productos WHERE id = ?", (item["id"],))
+                res_prod = cur.fetchone()
+                
+                if res_prod:
+                    # Manejo robusto: intentamos por nombre de columna, sino por índice 0
+                    try:
+                        litros_unidad = float(res_prod["litros"] or 0)
+                    except:
+                        litros_unidad = float(res_prod[0] or 0)
+                    
+                    litros_totales_item = litros_unidad * cant_vendida
+            # ----------------------------
 
-            litros_totales_item = litros_unidad * cant
-
-            # A. Insertar item de venta
             cur.execute("""
                 INSERT INTO venta_items (id, venta_id, producto_id, cantidad, litros_total, subtotal)
                 VALUES (?, ?, ?, ?, ?, ?)
-            """, (item_id, venta_id, item["id"], cant, litros_totales_item, sub_item))
+            """, (item_id, venta_id, item["id"], cant_vendida, litros_totales_item, sub_item))
             
-            # B. DESCONTAR STOCK LOCAL (SQLite)
-            cur.execute("UPDATE productos SET stock = stock - ? WHERE id = ?", (cant, item["id"]))
-
             items_para_sync.append({
                 "id": item_id, 
                 "venta_id": venta_id, 
                 "producto_id": item["id"],
-                "cantidad": cant, 
+                "cantidad": cant_vendida, 
                 "litros_total": litros_totales_item,
                 "subtotal": sub_item
             })
@@ -2118,8 +2122,10 @@ def carrito_confirmar():
 
         for item_s in items_para_sync:
             save_offline("venta_items", "insert", item_s)
-            # Orden específica para que el worker reste en Supabase
-            save_offline("productos", "update", {"id": item_s["producto_id"], "stock_restar": item_s["cantidad"]})
+            save_offline("productos", "update", {
+                "id": item_s["producto_id"],
+                "stock_restar": item_s["cantidad"] 
+            })
 
         session["carrito"] = []
         return redirect("/ventas_ui")
