@@ -429,7 +429,13 @@ def vaciar_carrito():
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+    con = get_db_local()
+    cur = con.cursor()
+    # El orden es: 0=descripción, 1=precio, 2=foto
+    cur.execute("SELECT descripcion, precio, foto FROM productos LIMIT 3")
+    lista_productos = cur.fetchall()
+    con.close()
+    return render_template("index.html", productos=lista_productos)
 @app.route("/tienda")
 def tienda():
     con = get_db()
