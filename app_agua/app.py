@@ -30,8 +30,8 @@ app = Flask(__name__)
 
 # 🔥 CONFIGURACIÓN DE SEGURIDAD (Esto arregla el RuntimeError)
 # El segundo valor es un "plan B" por si el .env no carga
-app.secret_key = os.getenv("SECRET_KEY", "clave_de_emergencia_")
-ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "")
+app.secret_key = os.getenv("SECRET_KEY", "clave_de_emergencia_12345")
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "1234")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "database.db")
