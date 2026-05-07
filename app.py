@@ -1717,24 +1717,31 @@ def carrito_agregar():
     if "carrito" not in session:
         session["carrito"] = []
 
-    codigo = (request.form.get("codigo") or "").strip().upper()
+    # Limpiamos el código y cantidad
+    codigo_original = (request.form.get("codigo") or "").strip()
+    codigo_upper = codigo_original.upper()
     cantidad_raw = request.form.get("cantidad")
 
-    if not codigo:
+    if not codigo_original:
         return "❌ Código vacío"
 
     if not cantidad_raw:
         return "❌ Debes ingresar cantidad"
 
-    cantidad = int(cantidad_raw)
+    try:
+        cantidad = int(cantidad_raw)
+    except ValueError:
+        return "❌ Cantidad debe ser un número"
 
     con = get_db()
     cur = con.cursor()
 
-    # ================= PROMOS =================
-    if codigo.startswith("PROMO-"):
-        promo_id = codigo.replace("PROMO-", "")
-
+    # ================= LÓGICA DE PROMOS =================
+    # Verificamos si es promo por prefijo o intentando buscar el ID directamente
+    if codigo_upper.startswith("PROMO-"):
+        # Extraemos el ID quitando el prefijo
+        promo_id = codigo_original[6:] # Usamos el original para no perder minúsculas del UUID
+        
         ejecutar(cur, con, """
             SELECT id, nombre, descripcion, precio
             FROM promos
@@ -1742,49 +1749,53 @@ def carrito_agregar():
         """, (promo_id,))
 
         promo = cur.fetchone()
-        con.close()
-
+        
         if not promo:
-            return "❌ Promo no existe"
+            con.close()
+            return f"❌ Promo no existe (ID buscado: {promo_id})"
 
         prod_id, nombre, desc, precio = promo
 
         session["carrito"].append({
             "id": "promo_" + str(prod_id),
             "desc": "🎁 " + nombre,
-            "precio": float(precio),
+            "precio": float(precio or 0),
             "cantidad": cantidad
         })
 
         session.modified = True
+        con.close()
         return redirect("/ventas_ui")
 
-    # ================= PRODUCTOS =================
+    # ================= LÓGICA DE PRODUCTOS =================
+    # Si no empezó con PROMO-, lo buscamos como producto normal
     ejecutar(cur, con, """
         SELECT id, descripcion, precio, stock
         FROM productos
         WHERE UPPER(codigo)=%s
-    """, (codigo,))
+    """, (codigo_upper,))
 
     prod = cur.fetchone()
-    con.close()
-
+    
     if not prod:
-        return "❌ Producto no existe"
+        con.close()
+        return f"❌ Producto no existe: {codigo_upper}"
 
     prod_id, desc, precio, stock = prod
 
     if stock < cantidad:
-        return "❌ Stock insuficiente"
+        con.close()
+        return f"❌ Stock insuficiente (Disponible: {stock})"
 
     session["carrito"].append({
         "id": prod_id,
         "desc": desc,
-        "precio": precio,
+        "precio": float(precio or 0),
         "cantidad": cantidad
     })
 
     session.modified = True
+    con.close()
     return redirect("/ventas_ui")
 
 @app.route("/reporte_ventas")
