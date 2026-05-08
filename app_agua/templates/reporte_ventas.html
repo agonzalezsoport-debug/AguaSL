@@ -106,7 +106,8 @@
 
     <div style="display: flex; align-items: flex-end; justify-content: space-around; height: 220px; padding-bottom: 40px; border-bottom: 2px solid #f0f2f5; gap: 20px;">
         {% for v in ventas_dia %}
-            {% set porcentaje = (v[2] / max_venta * 100)|round|int %}
+            {% set porcentaje = (v[2]|float / max_venta|float * 100)|round|int %}
+
             <div style="display: flex; flex-direction: column; align-items: center; flex: 1; max-width: 60px; height: 100%; justify-content: flex-end; position: relative;">
                 
                 <!-- Monto arriba -->
