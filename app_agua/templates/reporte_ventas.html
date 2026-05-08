@@ -172,7 +172,8 @@
     <!-- Cálculo de % Recargo -->
     <td style="font-size: 12px; color: #d97706;">
         {% if subtotal > 0 %}
-            {{ "{:.1f}%".format((recargo / subtotal) * 100) }}
+            {{ "{:.1f}%".format((recargo|float / subtotal|float) * 100) }}
+
         {% else %} 0% {% endif %}
     </td>
     
@@ -183,7 +184,8 @@
     <!-- Cálculo de % Descuento -->
     <td style="font-size: 12px; color: #dc2626;">
         {% if subtotal > 0 %}
-            {{ "{:.1f}%".format((descuento / subtotal) * 100) }}
+          {{ "{:.1f}%".format((descuento|float / subtotal|float) * 100) }}
+
         {% else %} 0% {% endif %}
     </td>
     
