@@ -96,17 +96,18 @@
 <input type="hidden" name="puntos_canje_dinero" id="puntos_canje_dinero" value="0">
 
 
-     <!-- NUEVO: SELECCIÓN DE CLIENTE PARA PUNTOS -->
-    <div style="margin-bottom: 15px;">
-        <label><b>👤 Seleccionar Cliente (Suma/Resta Puntos)</b></label>
-        <select name="cliente_id" style="width: 100%; padding: 12px; margin-top: 5px; border-radius: 8px; border: 1px solid #ccc;">
-            <option value="">👤 Consumidor Final (No suma puntos)</option>
-            {% for cli in clientes %}
-            <option value="{{ cli.id }}">{{ cli.nombre }} (Puntos: {{ cli.puntos_accumulados }})</option>
-            {% endfor %}
-        </select>
-    </div>
-
+     <select name="cliente_id" id="cliente_id_selector"
+            style="width:100%;padding:12px;border-radius:8px;border:1px solid #ccc;">
+    
+        <option value="">👤 Consumidor Final</option>
+    
+        {% for cli in clientes %}
+            <option value="{{ cli.id }}">
+                {{ cli.nombre }} (Puntos: {{ cli.puntos_acumulados or 0 }})
+            </option>
+        {% endfor %}
+    
+    </select>
 
     <label>💳 Método de pago</label>
     <select name="metodo_pago" id="metodo_pago" onchange="calcularTotal()" style="width: 100%; padding: 10px; border-radius: 8px;">
