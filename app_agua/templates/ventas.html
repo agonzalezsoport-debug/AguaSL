@@ -438,39 +438,54 @@ function calcularTotal() {
 
 // ================= CLIENTE =================
 
-document.getElementById("cliente_id").onchange = function () {
+document.addEventListener("DOMContentLoaded", function () {
 
-    let id = this.value;
+    calcularTotal();
 
-    if (!id) {
+    const cliente = document.getElementById("cliente_id");
 
-        document.getElementById("seccion_puntos").style.display = "none";
+    if (!cliente) return;
 
-        document.getElementById(
-            "puntos_canje_dinero"
-        ).value = 0;
+    cliente.addEventListener("change", function () {
 
-        calcularTotal();
+        let id = this.value;
 
-        return;
-    }
+        if (!id) {
 
-    fetch(`/api/cliente/validar_puntos/${id}`)
-        .then(res => res.json())
-        .then(data => {
+            document.getElementById("seccion_puntos").style.display = "none";
 
-            document.getElementById("seccion_puntos").style.display = "block";
+            document.getElementById(
+                "puntos_canje_dinero"
+            ).value = 0;
 
-            document.getElementById("puntos_cliente").innerText =
-                data.puntos;
+            calcularTotal();
 
-            document.getElementById("equiv_pesos").innerText =
-                data.descuento_disponible;
+            return;
+        }
 
-            window.puntosDisponibles =
-                data.descuento_disponible;
-        });
-};
+        fetch(`/api/cliente/validar_puntos/${id}`)
+            .then(res => res.json())
+            .then(data => {
+
+                document.getElementById(
+                    "seccion_puntos"
+                ).style.display = "block";
+
+                document.getElementById(
+                    "puntos_cliente"
+                ).innerText = data.puntos;
+
+                document.getElementById(
+                    "equiv_pesos"
+                ).innerText = data.descuento_disponible;
+
+                window.puntosDisponibles =
+                    data.descuento_disponible;
+            });
+
+    });
+
+});
 
 // ================= APLICAR PUNTOS =================
 
@@ -503,7 +518,7 @@ function aplicarPuntosComoDescuento() {
 }
 
 
-window.onload = null;
+
 document.addEventListener("DOMContentLoaded", function () {
 
     calcularTotal();
