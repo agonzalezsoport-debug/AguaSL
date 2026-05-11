@@ -438,91 +438,114 @@ function calcularTotal() {
 
 // ================= CLIENTE =================
 
+document.addEventListener("DOMContentLoaded", function () {
 
+    // CALCULAR TOTAL INICIAL
+    calcularTotal();
+
+    // OBTENER SELECT CLIENTE
+    const cliente = document.getElementById("cliente_id");
+
+    // SI NO EXISTE, SALIR
+    if (!cliente) return;
+
+    // EVENTO CAMBIO CLIENTE
+    cliente.addEventListener("change", cargarPuntosCliente);
+
+});
+
+
+// ================= CARGAR PUNTOS =================
 
 function cargarPuntosCliente() {
 
+    // ID CLIENTE
     let id = document.getElementById("cliente_id").value;
 
-    // SIN CLIENTE
+    // SI NO HAY CLIENTE
     if (!id) {
 
+        // OCULTAR PANEL
         document.getElementById("seccion_puntos").style.display = "none";
 
+        // RESETEAR DESCUENTO
         document.getElementById("puntos_canje_dinero").value = 0;
 
+        // RECALCULAR TOTAL
         calcularTotal();
 
         return;
     }
 
+    // CONSULTAR API
     fetch(`/api/cliente/validar_puntos/${id}`)
         .then(res => res.json())
         .then(data => {
 
-            console.log(data);
+            console.log("DATOS CLIENTE:", data);
 
+            // MOSTRAR PANEL
             document.getElementById("seccion_puntos").style.display = "block";
 
+            // PUNTOS
             document.getElementById("puntos_cliente").innerText =
                 data.puntos || 0;
 
+            // DESCUENTO DISPONIBLE
             document.getElementById("equiv_pesos").innerText =
                 data.descuento_disponible || 0;
 
+            // GUARDAR GLOBAL
             window.puntosDisponibles =
                 data.descuento_disponible || 0;
 
         })
-        .catch(err => {
-            console.error(err);
+        .catch(error => {
+
+            console.error("ERROR:", error);
+
+            // OCULTAR PANEL SI HAY ERROR
+            document.getElementById("seccion_puntos").style.display = "none";
+
         });
 }
+
+
 // ================= APLICAR PUNTOS =================
 
 function aplicarPuntosComoDescuento() {
 
+    // TOTAL CARRITO
     let total = parseFloat(
         document.getElementById("total").innerText || 0
     );
 
-    let puntos =
-        parseFloat(window.puntosDisponibles || 0);
+    // PUNTOS DISPONIBLES
+    let puntos = parseFloat(
+        window.puntosDisponibles || 0
+    );
 
-    // 🔥 usar solo lo necesario
+    // DESCUENTO A USAR
     let descuentoAplicado =
         puntos > total
         ? total
         : puntos;
 
+    // GUARDAR DESCUENTO
     document.getElementById(
         "puntos_canje_dinero"
     ).value = descuentoAplicado;
 
+    // RECALCULAR TOTAL
     calcularTotal();
 
+    // ALERTA
     alert(
         "⭐ Se aplicaron $" +
         descuentoAplicado +
         " en descuentos"
     );
 }
-
-
-
-document.addEventListener("DOMContentLoaded", function () {
-
-    calcularTotal();
-
-    const cliente = document.getElementById("cliente_id");
-
-    if (cliente) {
-
-        cliente.dispatchEvent(new Event("change"));
-
-    }
-
-});    
 // ===================== F10 (TECLADO GLOBAL) =====================
 window.addEventListener("keydown", function (e) {
     if (e.key === "F10") {
