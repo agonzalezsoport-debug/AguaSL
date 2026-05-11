@@ -2010,32 +2010,47 @@ def debug_promos():
 
     con.close()
     return str(data)
+from psycopg2.extras import RealDictCursor
+
 @app.route("/ventas_ui")
 def ventas_ui():
+
     con = get_db()
-    cur = con.cursor()
-    
-    # 1. Traer productos y promos (esto ya lo tenés)
+
+    cur = con.cursor(cursor_factory=RealDictCursor)
+
+    # PRODUCTOS
     cur.execute("SELECT * FROM productos")
     productos = cur.fetchall()
-    cur.execute("SELECT id, nombre, descripcion, precio FROM promos WHERE activa=1")
+
+    # PROMOS
+    cur.execute("""
+        SELECT id, nombre, descripcion, precio
+        FROM promos
+        WHERE activa=1
+    """)
     promos = cur.fetchall()
 
-    # 2. 🔥 EL FIX: Traer los clientes para el desplegable
-    # Asegurate de que la consulta no los filtre por error
-    cur.execute("SELECT id, nombre, puntos_acumulados FROM usuarios")
+    # CLIENTES
+    cur.execute("""
+        SELECT id, nombre, puntos_acumulados
+        FROM usuarios
+    """)
+
     lista_clientes = cur.fetchall()
-    
+
     con.close()
-    
-    # 3. PASARLOS AL HTML (Asegurate que el nombre coincida con el for del HTML)
+
     return render_template(
-        "ventas.html", 
-        productos=productos, 
-        promos=promos, 
-        clientes=lista_clientes, # <--- Este nombre debe usar el HTML
+        "ventas.html",
+        productos=productos,
+        promos=promos,
+        clientes=lista_clientes,
         carrito=session.get("carrito", []),
-        total=sum(float(i["precio"]) * int(i["cantidad"]) for i in session.get("carrito", []))
+        total=sum(
+            float(i["precio"]) * int(i["cantidad"])
+            for i in session.get("carrito", [])
+        )
     )
 
 @app.route("/carrito/confirmar", methods=["POST"])
@@ -2157,19 +2172,29 @@ def carrito_confirmar():
 
 @app.route("/api/cliente/validar_puntos/<int:id>")
 def api_validar_puntos(id):
-    con = get_db_local()
-    cur = con.cursor()
-    cur.execute("SELECT puntos_acumulados FROM usuarios WHERE id = ?", (id,))
-    res = cur.fetchone()
-    con.close()
-    
-    puntos = 0
-    if res:
-        # Ajusta esto si usas row_factory o tupla
-        puntos = res[0] if isinstance(res, tuple) else res.get('puntos_acumulados', 0)
-        
-    return jsonify({"puntos": puntos, "descuento_disponible": puntos})
 
+    con = get_db()  # ✅ SUPABASE
+    cur = con.cursor()
+
+    cur.execute("""
+        SELECT puntos_acumulados
+        FROM usuarios
+        WHERE id = %s
+    """, (id,))
+
+    res = cur.fetchone()
+
+    con.close()
+
+    puntos = 0
+
+    if res:
+        puntos = res[0]
+
+    return jsonify({
+        "puntos": puntos,
+        "descuento_disponible": puntos
+    })
 
 @app.route("/caja/cerrar", methods=["POST"])
 def cierre_caja():
