@@ -216,27 +216,34 @@
 
 
 function aplicarPuntosComoDescuento() {
-    let totalCarrito = parseFloat(document.getElementById("total").innerText);
-    let puntosDisponibles = parseFloat(window.puntos_disponibles || 0);
-    
-    // Regla: 1 punto = $1. No podemos descontar más de lo que vale la compra.
-    let descuentoPesos = puntosDisponibles > totalCarrito ? totalCarrito : puntosDisponibles;
-    
-    // 1. Guardamos el valor exacto para que el servidor los reste de la DB
-    document.getElementById("puntos_canje_dinero").value = descuentoPesos;
-    
-    // 2. Aplicamos visualmente (esto es lo que ya tenías)
-    // Calculamos qué porcentaje del total representan esos puntos
-    let porc = (descuentoPesos * 100) / totalCarrito;
-    document.getElementById("descuento").value = porc.toFixed(2);
-    
-    // 3. Recalculamos el total final en pantalla
-    calcularTotal();
-    
-    alert("⭐ Se aplicó un descuento de $" + descuentoPesos + " por tus puntos.");
-}
 
-</script>
+    let totalCarrito = parseFloat(
+        document.getElementById("total").innerText
+    );
+
+    let puntosDisponibles = parseFloat(
+        window.puntos_disponibles || 0
+    );
+
+    let descuentoPesos =
+        puntosDisponibles > totalCarrito
+        ? totalCarrito
+        : puntosDisponibles;
+
+    // Guardar puntos usados
+    document.getElementById(
+        "puntos_canje_dinero"
+    ).value = descuentoPesos;
+
+    // 🔥 YA NO TOCAMOS EL INPUT DESCUENTO
+    calcularTotal();
+
+    alert(
+        "⭐ Se aplicó un descuento de $" +
+        descuentoPesos +
+        " por puntos."
+    );
+}
 
 
 <!-- ===================== MODAL VENTA DIRECTA ===================== -->
@@ -371,23 +378,57 @@ function calcularTotal() {
     let metodo = document.getElementById("metodo_pago").value;
     let recargoBox = document.getElementById("recargoBox");
 
-    let total = parseFloat(document.getElementById("total").innerText || 0);
-    let recargo = parseFloat(document.getElementById("recargo").value || 0);
-    let descuento = parseFloat(document.getElementById("descuento").value || 0);
+    let total = parseFloat(
+        document.getElementById("total").innerText || 0
+    );
 
-    if (metodo === "tarjeta" || metodo === "transferencia" || metodo === "qr") {
+    let recargo = parseFloat(
+        document.getElementById("recargo").value || 0
+    );
+
+    let descuento = parseFloat(
+        document.getElementById("descuento").value || 0
+    );
+
+    // 🔥 NUEVO
+    let puntosCanje = parseFloat(
+        document.getElementById("puntos_canje_dinero").value || 0
+    );
+
+    // Mostrar/Ocultar recargo
+    if (
+        metodo === "tarjeta" ||
+        metodo === "transferencia" ||
+        metodo === "qr"
+    ) {
         recargoBox.style.display = "block";
     } else {
         recargoBox.style.display = "none";
         recargo = 0;
     }
 
-    let totalConRecargo = total + (total * recargo / 100);
-    let totalFinal = totalConRecargo - (totalConRecargo * descuento / 100);
+    // Total con recargo
+    let totalConRecargo =
+        total + (total * recargo / 100);
 
-    document.getElementById("totalFinal").innerText = totalFinal.toFixed(2);
+    // Descuento NORMAL (%)
+    let descuentoNormal =
+        totalConRecargo * descuento / 100;
+
+    // Total FINAL REAL
+    let totalFinal =
+        totalConRecargo
+        - descuentoNormal
+        - puntosCanje;
+
+    // Evitar negativos
+    if (totalFinal < 0) {
+        totalFinal = 0;
+    }
+
+    document.getElementById("totalFinal").innerText =
+        totalFinal.toFixed(2);
 }
-
 window.onload = calcularTotal;
 // ===================== F10 (TECLADO GLOBAL) =====================
 window.addEventListener("keydown", function (e) {
