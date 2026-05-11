@@ -443,6 +443,46 @@ def count_pedidos():
 def vaciar_carrito():
     session.pop("carrito_cliente", None)
     return redirect("/tienda")
+@app.route("/api/cliente/validar_puntos/<int:cliente_id>")
+def validar_puntos(cliente_id):
+
+    con = get_db_cloud()
+    cur = con.cursor(cursor_factory=RealDictCursor)
+
+    try:
+
+        cur.execute("""
+            SELECT COALESCE(puntos_acumulados,0) AS puntos
+            FROM usuarios
+            WHERE id = %s
+        """, (cliente_id,))
+
+        cliente = cur.fetchone()
+
+        if not cliente:
+            return jsonify({
+                "puntos": 0,
+                "descuento_disponible": 0
+            })
+
+        puntos = float(cliente["puntos"])
+
+        return jsonify({
+            "puntos": puntos,
+            "descuento_disponible": puntos
+        })
+
+    except Exception as e:
+
+        print("❌ ERROR validar_puntos:", e)
+
+        return jsonify({
+            "puntos": 0,
+            "descuento_disponible": 0
+        })
+
+    finally:
+        con.close()
 
 @app.route("/")
 def index():
