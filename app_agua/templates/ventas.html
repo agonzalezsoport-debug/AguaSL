@@ -476,31 +476,32 @@ document.getElementById("cliente_id").onchange = function () {
 
 function aplicarPuntosComoDescuento() {
 
-    let descuento =
+    let total = parseFloat(
+        document.getElementById("total").innerText || 0
+    );
+
+    let puntos =
         parseFloat(window.puntosDisponibles || 0);
+
+    // 🔥 usar solo lo necesario
+    let descuentoAplicado =
+        puntos > total
+        ? total
+        : puntos;
 
     document.getElementById(
         "puntos_canje_dinero"
-    ).value = descuento;
+    ).value = descuentoAplicado;
 
     calcularTotal();
 
-    alert("⭐ Puntos aplicados correctamente");
+    alert(
+        "⭐ Se aplicaron $" +
+        descuentoAplicado +
+        " en descuentos"
+    );
 }
 
-function aplicarPuntosComoDescuento() {
-
-    let descuento =
-        parseFloat(window.puntosDisponibles || 0);
-
-    document.getElementById(
-        "puntos_canje_dinero"
-    ).value = descuento;
-
-    calcularTotal();
-
-    alert("⭐ Puntos aplicados");
-}
 
 window.onload = calcularTotal;
 // ===================== F10 (TECLADO GLOBAL) =====================
