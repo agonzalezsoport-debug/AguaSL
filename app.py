@@ -2011,41 +2011,43 @@ def debug_promos():
     return str(data)
 @app.route("/ventas_ui")
 def ventas_ui():
-    cajero_nombre = session.get("nombre_cajero", "admin")
-    print("DEBUG CAJERO_ID:", session.get("cajero_id"))
-    print("DEBUG CAJERO_NOMBRE:", session.get("nombre_cajero"))
 
-    con = get_db()
+    # 🔥 SIEMPRE SUPABASE
+    con = get_db_cloud()
     cur = con.cursor()
 
-    # ================= PRODUCTOS =================
-    ejecutar(cur, con, "SELECT * FROM productos")
+    # PRODUCTOS
+    cur.execute("SELECT * FROM productos")
     productos = cur.fetchall()
 
-    # ================= PROMOS =================
-    ejecutar(cur, con, """
+    # PROMOS
+    cur.execute("""
         SELECT id, nombre, descripcion, precio 
         FROM promos 
         WHERE activa=1
     """)
     promos = cur.fetchall()
 
+    # CLIENTES
+    cur.execute("""
+        SELECT id, nombre, puntos_acumulados 
+        FROM usuarios
+        ORDER BY nombre ASC
+    """)
+    lista_clientes = cur.fetchall()
+
     con.close()
-
-    # ================= CARRITO =================
-    carrito = session.get("carrito", [])
-
-    subtotal = sum(
-        float(i["precio"]) * int(i["cantidad"])
-        for i in carrito
-    )
 
     return render_template(
         "ventas.html",
         productos=productos,
         promos=promos,
-        carrito=carrito,
-        total=subtotal
+        clientes=lista_clientes,
+        carrito=session.get("carrito", []),
+        total=sum(
+            float(i["precio"]) * int(i["cantidad"])
+            for i in session.get("carrito", [])
+        )
     )
 @app.route("/carrito/confirmar", methods=["POST"])
 def carrito_confirmar():
