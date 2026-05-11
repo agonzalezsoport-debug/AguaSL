@@ -92,20 +92,24 @@
 
 <!-- ===================== VENTA ===================== -->
 <form method="POST" action="/carrito/confirmar" style="margin-top:15px; background: #fff; padding: 15px; border-radius: 10px; border: 1px solid #ddd;">
-    <!-- Agregá esto dentro del formulario de venta -->
-<input type="hidden" name="puntos_canje_dinero" id="puntos_canje_dinero" value="0">
-
+    
+    <!-- Input oculto para que el servidor reciba los puntos a descontar -->
+    <input type="hidden" name="puntos_canje_dinero" id="puntos_canje_dinero" value="0">
 
     <!-- NUEVO: SELECCIÓN DE CLIENTE PARA PUNTOS -->
     <div style="margin-bottom: 15px;">
         <label><b>👤 Seleccionar Cliente (Suma/Resta Puntos)</b></label>
-        <select name="cliente_id" style="width: 100%; padding: 12px; margin-top: 5px; border-radius: 8px; border: 1px solid #ccc;">
+        <select name="cliente_id" id="cliente_id" style="width: 100%; padding: 12px; margin-top: 5px; border-radius: 8px; border: 1px solid #ccc;">
             <option value="">👤 Consumidor Final (No suma puntos)</option>
             {% for cli in clientes %}
-            <option value="{{ cli.id }}">{{ cli.nombre }} (Puntos: {{ cli.puntos_accumulados }})</option>
+                <!-- FIX: puntos_acumulados (con una sola 'c') -->
+                <option value="{{ cli.id }}">
+                    {{ cli.nombre }} (Puntos: {{ cli.puntos_acumulados or 0 }})
+                </option>
             {% endfor %}
         </select>
     </div>
+
 
     <label>💳 Método de pago</label>
     <select name="metodo_pago" id="metodo_pago" onchange="calcularTotal()" style="width: 100%; padding: 10px; border-radius: 8px;">
