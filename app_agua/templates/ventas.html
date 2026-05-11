@@ -86,6 +86,76 @@
 
 <!-- ===================== VENTA ===================== -->
 <form method="POST" action="/carrito/confirmar" style="margin-top:15px;">
+    <!-- CLIENTES Y PUNTOS -->
+<div style="margin-bottom:15px;">
+
+    <label>
+        <b>👤 Cliente</b>
+    </label>
+
+    <select name="cliente_id"
+            id="cliente_id"
+            style="
+                width:100%;
+                padding:12px;
+                border-radius:8px;
+                border:1px solid #ccc;
+                margin-top:5px;
+            ">
+
+        <option value="">
+            Consumidor Final
+        </option>
+
+        {% for cli in clientes %}
+        <option value="{{ cli[0] }}">
+            {{ cli[1] }} - ⭐ {{ cli[2] or 0 }} puntos
+        </option>
+        {% endfor %}
+
+    </select>
+
+</div>
+
+<!-- PANEL PUNTOS -->
+<div id="seccion_puntos"
+     style="
+        display:none;
+        background:#e0f2fe;
+        padding:10px;
+        border-radius:10px;
+        margin-bottom:15px;
+     ">
+
+    <p>
+        ⭐ Puntos disponibles:
+        <b id="puntos_cliente">0</b>
+    </p>
+
+    <p>
+        💰 Descuento disponible:
+        $<b id="equiv_pesos">0</b>
+    </p>
+
+    <input type="hidden"
+           name="puntos_canje_dinero"
+           id="puntos_canje_dinero"
+           value="0">
+
+    <button type="button"
+            onclick="aplicarPuntosComoDescuento()"
+            style="
+                background:#0284c7;
+                color:white;
+                border:none;
+                padding:8px 12px;
+                border-radius:8px;
+                cursor:pointer;
+            ">
+        Aplicar puntos
+    </button>
+
+</div>
 
     <label>💳 Método de pago</label>
     <select name="metodo_pago" id="metodo_pago" onchange="calcularTotal()">
@@ -314,21 +384,122 @@ function calcularTotal() {
     let metodo = document.getElementById("metodo_pago").value;
     let recargoBox = document.getElementById("recargoBox");
 
-    let total = parseFloat(document.getElementById("total").innerText || 0);
-    let recargo = parseFloat(document.getElementById("recargo").value || 0);
-    let descuento = parseFloat(document.getElementById("descuento").value || 0);
+    let total = parseFloat(
+        document.getElementById("total").innerText || 0
+    );
 
-    if (metodo === "tarjeta" || metodo === "transferencia" || metodo === "qr") {
+    let recargo = parseFloat(
+        document.getElementById("recargo").value || 0
+    );
+
+    let descuento = parseFloat(
+        document.getElementById("descuento").value || 0
+    );
+
+    // 🔥 PUNTOS
+    let puntos = parseFloat(
+        document.getElementById("puntos_canje_dinero").value || 0
+    );
+
+    // Mostrar/Ocultar recargo
+    if (
+        metodo === "tarjeta" ||
+        metodo === "transferencia" ||
+        metodo === "qr"
+    ) {
         recargoBox.style.display = "block";
     } else {
         recargoBox.style.display = "none";
         recargo = 0;
     }
 
-    let totalConRecargo = total + (total * recargo / 100);
-    let totalFinal = totalConRecargo - (totalConRecargo * descuento / 100);
+    // Total con recargo
+    let totalConRecargo =
+        total + (total * recargo / 100);
 
-    document.getElementById("totalFinal").innerText = totalFinal.toFixed(2);
+    // Descuento %
+    let descuentoNormal =
+        totalConRecargo * descuento / 100;
+
+    // 🔥 TOTAL FINAL
+    let totalFinal =
+        totalConRecargo
+        - descuentoNormal
+        - puntos;
+
+    // Evitar negativos
+    if (totalFinal < 0) {
+        totalFinal = 0;
+    }
+
+    document.getElementById("totalFinal").innerText =
+        totalFinal.toFixed(2);
+}
+
+// ================= CLIENTE =================
+
+document.getElementById("cliente_id").onchange = function () {
+
+    let id = this.value;
+
+    if (!id) {
+
+        document.getElementById("seccion_puntos").style.display = "none";
+
+        document.getElementById(
+            "puntos_canje_dinero"
+        ).value = 0;
+
+        calcularTotal();
+
+        return;
+    }
+
+    fetch(`/api/cliente/validar_puntos/${id}`)
+        .then(res => res.json())
+        .then(data => {
+
+            document.getElementById("seccion_puntos").style.display = "block";
+
+            document.getElementById("puntos_cliente").innerText =
+                data.puntos;
+
+            document.getElementById("equiv_pesos").innerText =
+                data.descuento_disponible;
+
+            window.puntosDisponibles =
+                data.descuento_disponible;
+        });
+};
+
+// ================= APLICAR PUNTOS =================
+
+function aplicarPuntosComoDescuento() {
+
+    let descuento =
+        parseFloat(window.puntosDisponibles || 0);
+
+    document.getElementById(
+        "puntos_canje_dinero"
+    ).value = descuento;
+
+    calcularTotal();
+
+    alert("⭐ Puntos aplicados correctamente");
+}
+
+function aplicarPuntosComoDescuento() {
+
+    let descuento =
+        parseFloat(window.puntosDisponibles || 0);
+
+    document.getElementById(
+        "puntos_canje_dinero"
+    ).value = descuento;
+
+    calcularTotal();
+
+    alert("⭐ Puntos aplicados");
 }
 
 window.onload = calcularTotal;
