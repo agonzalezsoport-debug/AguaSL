@@ -2048,8 +2048,9 @@ def carrito_confirmar():
     if not caja_id:
         return "❌ Debes abrir caja primero"
 
-    # Conexión local optimizada
-    con = get_db_local() 
+    # CONEXIÓN DIRECTA A SUPABASE (NUBE)
+    # Cambiamos get_db_local() por get_db() para evitar el error "no such column" de SQLite
+    con = get_db() 
     cur = con.cursor()
 
     try:
@@ -2059,7 +2060,7 @@ def carrito_confirmar():
         descuento_porc = float(request.form.get("descuento") or 0)
         cliente_id = request.form.get("cliente_id")
         
-        # [NUEVO] Puntos que el cajero decide redimir como dinero (1 punto = $1)
+        # Puntos redimidos como dinero
         puntos_canje_cash = int(request.form.get("puntos_canje_dinero") or 0)
         descuento_por_puntos_pesos = puntos_canje_cash * 1.0 
 
@@ -2073,119 +2074,75 @@ def carrito_confirmar():
         # --- 2. CÁLCULO DE TOTALES ---
         subtotal = sum(float(i["precio"]) * int(i["cantidad"]) for i in carrito)
         
-        # Primero restamos el descuento por puntos acumulados
+        # Restamos el valor de los puntos antes de aplicar recargos/descuentos extra
         subtotal_restante = max(0, subtotal - descuento_por_puntos_pesos)
         
         recargo_valor = subtotal_restante * (recargo_porc / 100)
         descuento_valor = subtotal_restante * (descuento_porc / 100)
         total_final = subtotal_restante + recargo_valor - descuento_valor
 
-        # --- 3. INSERT VENTA LOCAL ---
-        # Registramos el descuento total (el del formulario + el de puntos)
+        # --- 3. INSERT VENTA EN SUPABASE ---
+        # Nota: Usamos %s para PostgreSQL
         descuento_total_final = descuento_valor + descuento_por_puntos_pesos
         
         cur.execute("""
             INSERT INTO ventas (id, fecha, total, recargo, descuento, total_final, metodo_pago, cajero, caja_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
         """, (venta_id, fecha, subtotal, recargo_valor, descuento_total_final, total_final, metodo_pago, cajero_nombre, caja_id))
 
-        # --- 4. PROCESAMIENTO DE ITEMS (STOCK, LITROS Y CANJES) ---
-        items_para_sync = []
+        # --- 4. PROCESAMIENTO DE ITEMS (STOCK Y LITROS) ---
         puntos_a_restar_por_items = 0
         litros_totales_venta = 0
 
         for item in carrito:
-            item_id = str(uuid.uuid4())
             cant_vendida = int(item["cantidad"])
             sub_item = float(item["precio"]) * cant_vendida
             prod_id_real = item["id"]
             
-            # Detectar si es una promo o producto normal
+            # Detectar si es una promo
             es_promo = "promo_" in str(prod_id_real)
 
-            # --- Lógica de Canje Individual (Marcado en el Carrito) ---
+            # Lógica de Canje Individual (50 puntos por unidad)
             if item.get("es_canje"):
-                # Cada unidad de ítem marcado como canje resta 50 puntos (ajustable)
                 puntos_a_restar_por_items += (50 * cant_vendida)
 
-            # --- Lógica de Stock y Litros (Tu código original) ---
             litros_totales_item = 0
             if not es_promo:
-                # A) DESCUENTO DE STOCK LOCAL
-                cur.execute("UPDATE productos SET stock = stock - ? WHERE id = ?", (cant_vendida, prod_id_real))
+                # A) DESCUENTO DE STOCK DIRECTO EN NUBE
+                cur.execute("UPDATE productos SET stock = stock - %s WHERE id = %s", (cant_vendida, prod_id_real))
                 
                 # B) CÁLCULO DE LITROS
-                cur.execute("SELECT litros FROM productos WHERE id = ?", (prod_id_real,))
+                cur.execute("SELECT litros FROM productos WHERE id = %s", (prod_id_real,))
                 res_prod = cur.fetchone()
                 if res_prod:
-                    try:
-                        # Manejo compatible con Row Factory o Tupla
-                        l_unidad = res_prod["litros"] if hasattr(res_prod, 'keys') else res_prod[0]
-                        litros_unidad = float(l_unidad or 0)
-                        litros_totales_item = litros_unidad * cant_vendida
-                        litros_totales_venta += litros_totales_item # Acumulamos para puntos
-                    except:
-                        litros_totales_item = 0
+                    # En Postgres res_prod suele ser una tupla o dict según tu config
+                    l_unidad = res_prod[0] if isinstance(res_prod, (list, tuple)) else res_prod.get('litros', 0)
+                    litros_totales_item = float(l_unidad or 0) * cant_vendida
+                    litros_totales_venta += litros_totales_item
 
-            # C) INSERT ITEM LOCAL
+            # C) INSERT ITEM EN NUBE
             cur.execute("""
                 INSERT INTO venta_items (id, venta_id, producto_id, cantidad, litros_total, subtotal)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (item_id, venta_id, prod_id_real, cant_vendida, litros_totales_item, sub_item))
-            
-            items_para_sync.append({
-                "id": item_id, 
-                "venta_id": venta_id, 
-                "producto_id": prod_id_real,
-                "cantidad": cant_vendida, 
-                "litros_total": litros_totales_item,
-                "subtotal": sub_item,
-                "es_promo": es_promo 
-            })
+                VALUES (%s, %s, %s, %s, %s, %s)
+            """, (str(uuid.uuid4()), venta_id, prod_id_real, cant_vendida, litros_totales_item, sub_item))
 
-        # --- 5. GESTIÓN DE PUNTOS ACUMULADOS (FIDELIZACIÓN) ---
-        if cliente_id and cliente_id != "":
-            # REGLAS: 
-            # Sumamos: 1 punto cada $1000 pagados + 10 puntos por cada litro.
-            # Restamos: Puntos usados como dinero + Puntos por ítems canjeados.
+        # --- 5. GESTIÓN DE PUNTOS Y LITROS (FIDELIZACIÓN EN SUPABASE) ---
+        if cliente_id and str(cliente_id).strip() != "":
+            # REGLAS: 1 punto cada $1000 + 10 puntos por cada litro.
             puntos_ganados = int(total_final / 1000) + int(litros_totales_venta * 10)
             total_puntos_a_deducir = puntos_canje_cash + puntos_a_restar_por_items
-            
             balance_neto = puntos_ganados - total_puntos_a_deducir
             
-            # Actualización Local (Columna: puntos_acumulados)
+            # Actualizamos directamente la tabla usuarios de Supabase
             cur.execute("""
                 UPDATE usuarios 
-                SET puntos_acumulados = COALESCE(puntos_acumulados, 0) + ? 
-                WHERE id = ?
-            """, (balance_neto, cliente_id))
-            
-            # Sync inteligente para Supabase
-            save_offline("usuarios", "update", {
-                "id": cliente_id, 
-                "puntos_balance": balance_neto # El worker debe sumar esto en la nube
-            })
+                SET puntos_acumulados = COALESCE(puntos_acumulados, 0) + %s,
+                    litros_totales = COALESCE(litros_totales, 0) + %s
+                WHERE id = %s
+            """, (balance_neto, litros_totales_venta, cliente_id))
 
-        # Finalizamos cambios locales
+        # Confirmamos todos los cambios en la nube
         con.commit()
-
-        # --- 6. COLA DE SINCRONIZACIÓN (NUBE) ---
-        save_offline("ventas", "insert", {
-            "id": venta_id, "fecha": fecha, "total": subtotal,
-            "recargo": recargo_valor, "descuento": descuento_total_final,
-            "total_final": total_final, "metodo_pago": metodo_pago, 
-            "cajero": cajero_nombre, "caja_id": caja_id
-        })
-
-        for item_s in items_para_sync:
-            era_promo = item_s.pop("es_promo", False) 
-            save_offline("venta_items", "insert", item_s)
-            
-            if not era_promo:
-                save_offline("productos", "update", {
-                    "id": item_s["producto_id"],
-                    "stock_restar": item_s["cantidad"] 
-                })
 
         session["carrito"] = []
         session.modified = True
@@ -2193,10 +2150,11 @@ def carrito_confirmar():
 
     except Exception as e:
         if con: con.rollback()
-        print(f"❌ Error en confirmar venta: {e}")
-        return f"❌ Error en venta: {e}"
+        print(f"❌ Error en confirmar venta Supabase: {e}")
+        return f"❌ Error en la nube: {e}"
     finally:
         if con: con.close()
+
 @app.route("/api/cliente/validar_puntos/<int:id>")
 def api_validar_puntos(id):
     con = get_db_local()
