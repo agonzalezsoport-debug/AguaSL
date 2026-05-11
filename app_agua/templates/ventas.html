@@ -13,45 +13,66 @@
     width:100%;
 ">
 
-<h3>🔎 Agregar producto</h3>
+    <h3>🔎 Agregar producto</h3>
 
-<div style="display:flex; gap:10px; margin-bottom:10px;">
+    <div style="display:flex; gap:10px; margin-bottom:10px;">
 
-    <button type="button" onclick="abrirVentaManual()"
-        style="padding:10px 15px;background:#16a34a;color:white;border:none;border-radius:8px;">
-        ➕ Venta directa
-    </button>
+        <button type="button"
+                onclick="abrirVentaManual()"
+                style="padding:10px 15px;background:#16a34a;color:white;border:none;border-radius:8px;">
+            ➕ Venta directa
+        </button>
 
-    <button type="button" onclick="abrirBuscador()"
-        style="padding:10px 15px;background:#2563eb;color:white;border:none;border-radius:8px;">
-        🔎 Buscar producto (F10)
-    </button>
+        <button type="button"
+                onclick="abrirBuscador()"
+                style="padding:10px 15px;background:#2563eb;color:white;border:none;border-radius:8px;">
+            🔎 Buscar producto (F10)
+        </button>
 
-</div>
+    </div>
 
-<form method="POST" action="/carrito/agregar"
-      style="display:flex;gap:10px;align-items:center;">
+    <form method="POST"
+          action="/carrito/agregar"
+          style="display:flex;gap:10px;align-items:center;">
 
-    <input name="codigo"
-           id="codigo"
-           placeholder="📦 Escanear código de barras..."
-           style="flex:1;padding:22px;font-size:26px;border:2px solid #4CAF50;border-radius:10px;"
-           required autofocus autocomplete="off">
+        <input name="codigo"
+               id="codigo"
+               placeholder="📦 Escanear código de barras..."
+               style="flex:1;padding:22px;font-size:26px;border:2px solid #4CAF50;border-radius:10px;"
+               required autofocus autocomplete="off">
 
-    <input name="cantidad"
-           type="number"
-           placeholder="Cant."
-           min="1"
-           value="1"
-           style="width:100px;padding:10px;font-size:16px;"
-           required>
+        <input name="cantidad"
+               type="number"
+               placeholder="Cant."
+               min="1"
+               value="1"
+               style="width:100px;padding:10px;font-size:16px;"
+               required>
 
-    <button type="submit"
-            style="padding:10px 20px;background:green;color:white;border:none;border-radius:8px;">
-        ➕ Agregar
-    </button>
+        <!-- CHECKBOX CANJE -->
+        <label style="
+            background:#fef3c7;
+            padding:10px;
+            border-radius:8px;
+            border:1px solid #f59e0b;
+            display:flex;
+            align-items:center;
+            gap:5px;
+            cursor:pointer;
+            font-size:14px;
+        ">
+            <input type="checkbox" id="es_canje_main" name="es_canje">
+            <span style="font-weight:bold;color:#92400e;">
+                🔄 ¿ES CANJE?
+            </span>
+        </label>
 
-</form>
+        <button type="submit"
+                style="padding:10px 20px;background:green;color:white;border:none;border-radius:8px;">
+            ➕ Agregar
+        </button>
+
+    </form>
 
 </div>
 
@@ -61,129 +82,207 @@
 
 <div style="background:#fff;padding:10px;border-radius:10px;">
 
-<table border="1" cellpadding="6" style="width:100%;">
-<tr>
-    <th>Producto</th>
-    <th>Cantidad</th>
-    <th>Subtotal</th>
-    <th></th>
-</tr>
+    <table border="1" cellpadding="6" style="width:100%;">
+        <tr>
+            <th>Producto</th>
+            <th>Cantidad</th>
+            <th>Subtotal</th>
+            <th></th>
+        </tr>
 
-{% for item in carrito %}
-<tr>
-    <td>{{ item.desc }}</td>
-    <td>{{ item.cantidad }}</td>
-    <td>${{ item.precio * item.cantidad }}</td>
-    <td><a href="/carrito/eliminar/{{ loop.index0 }}">❌</a></td>
-</tr>
-{% endfor %}
+        {% for item in carrito %}
+        <tr>
+            <td>
+                {{ item.desc }}
 
-</table>
+                {% if item.es_canje %}
+                <span style="
+                    background:#f59e0b;
+                    color:white;
+                    padding:2px 6px;
+                    border-radius:6px;
+                    font-size:12px;
+                    margin-left:5px;
+                ">
+                    CANJE
+                </span>
+                {% endif %}
+            </td>
 
-<h2>💰 Total: $<span id="total">{{ total }}</span></h2>
+            <td>{{ item.cantidad }}</td>
 
-</div>
+            <td>
+                ${{ item.precio * item.cantidad }}
+            </td>
 
-<!-- ===================== VENTA ===================== -->
-<form method="POST" action="/carrito/confirmar" style="margin-top:15px;">
-    <!-- CLIENTES Y PUNTOS -->
-<div style="margin-bottom:15px;">
-
-    <label>
-        <b>👤 Cliente</b>
-    </label>
-
-    <select name="cliente_id"
-            id="cliente_id"
-            style="
-                width:100%;
-                padding:12px;
-                border-radius:8px;
-                border:1px solid #ccc;
-                margin-top:5px;
-            ">
-
-        <option value="">
-            Consumidor Final
-        </option>
-
-        {% for cli in clientes %}
-        <option value="{{ cli[0] }}">
-            {{ cli[1] }} - ⭐ {{ cli[2] or 0 }} puntos
-        </option>
+            <td>
+                <a href="/carrito/eliminar/{{ loop.index0 }}">❌</a>
+            </td>
+        </tr>
         {% endfor %}
+    </table>
 
-    </select>
+    <h2>
+        💰 Total: $
+        <span id="total">{{ total }}</span>
+    </h2>
 
 </div>
 
-<!-- PANEL PUNTOS -->
-<div id="seccion_puntos"
-     style="
-        display:none;
-        background:#e0f2fe;
-        padding:10px;
+<!-- ===================== FORMULARIO VENTA ===================== -->
+<form method="POST"
+      action="/carrito/confirmar"
+      style="
+        margin-top:15px;
+        background:#fff;
+        padding:15px;
         border-radius:10px;
-        margin-bottom:15px;
-     ">
+        border:1px solid #ddd;
+      ">
 
-    <p>
-        ⭐ Puntos disponibles:
-        <b id="puntos_cliente">0</b>
-    </p>
-
-    <p>
-        💰 Descuento disponible:
-        $<b id="equiv_pesos">0</b>
-    </p>
-
+    <!-- INPUT OCULTO -->
     <input type="hidden"
            name="puntos_canje_dinero"
            id="puntos_canje_dinero"
            value="0">
 
-    <button type="button"
-            onclick="aplicarPuntosComoDescuento()"
-            style="
-                background:#0284c7;
-                color:white;
-                border:none;
-                padding:8px 12px;
-                border-radius:8px;
-                cursor:pointer;
-            ">
-        Aplicar puntos
-    </button>
+    <!-- CLIENTE -->
+    <div style="margin-bottom:15px;">
 
-</div>
+        <label>
+            <b>👤 Cliente</b>
+        </label>
 
+        <select name="cliente_id"
+                id="cliente_id"
+                onchange="cargarPuntosCliente()"
+                style="
+                    width:100%;
+                    padding:12px;
+                    border-radius:8px;
+                    border:1px solid #ccc;
+                    margin-top:5px;
+                ">
+
+            <option value="">
+                Consumidor Final
+            </option>
+
+            {% for cli in clientes %}
+            <option value="{{ cli.id }}">
+                {{ cli.nombre }}
+                - ⭐ {{ cli.puntos_accumulados or 0 }}
+            </option>
+            {% endfor %}
+
+        </select>
+
+    </div>
+
+    <!-- PANEL PUNTOS -->
+    <div id="seccion_puntos"
+         style="
+            display:none;
+            background:#e0f2fe;
+            padding:10px;
+            border-radius:10px;
+            margin-bottom:15px;
+         ">
+
+        <p>
+            ⭐ Puntos disponibles:
+            <b id="puntos_cliente">0</b>
+        </p>
+
+        <p>
+            💰 Descuento disponible:
+            $<b id="equiv_pesos">0</b>
+        </p>
+
+        <button type="button"
+                onclick="aplicarPuntosComoDescuento()"
+                style="
+                    background:#0284c7;
+                    color:white;
+                    border:none;
+                    padding:8px 12px;
+                    border-radius:8px;
+                    cursor:pointer;
+                ">
+            Aplicar puntos
+        </button>
+
+    </div>
+
+    <!-- METODO -->
     <label>💳 Método de pago</label>
-    <select name="metodo_pago" id="metodo_pago" onchange="calcularTotal()">
+
+    <select name="metodo_pago"
+            id="metodo_pago"
+            onchange="calcularTotal()"
+            style="
+                width:100%;
+                padding:10px;
+                border-radius:8px;
+            ">
+
         <option value="efectivo">💵 Efectivo</option>
         <option value="transferencia">🏦 Transferencia</option>
         <option value="tarjeta">💳 Tarjeta</option>
         <option value="qr">📱 QR</option>
         <option value="fiado">📒 Fiado</option>
+
     </select>
 
+    <!-- DESCUENTO -->
     <div style="margin-top:10px;">
+
         <label>🎯 Descuento %</label>
-        <input type="number" id="descuento" name="descuento"
-               value="0" min="0" max="100"
-               oninput="calcularTotal()">
+
+        <input type="number"
+               id="descuento"
+               name="descuento"
+               value="0"
+               min="0"
+               max="100"
+               oninput="calcularTotal()"
+               style="width:80px;padding:5px;">
+
     </div>
 
-    <div id="recargoBox" style="display:none;margin-top:10px;">
+    <!-- RECARGO -->
+    <div id="recargoBox"
+         style="display:none;margin-top:10px;">
+
         <label>Recargo %</label>
-        <input type="number" id="recargo" name="recargo"
-               value="0" min="0" max="50"
-               oninput="calcularTotal()">
+
+        <input type="number"
+               id="recargo"
+               name="recargo"
+               value="0"
+               min="0"
+               max="50"
+               oninput="calcularTotal()"
+               style="width:80px;padding:5px;">
+
     </div>
 
-    <h2>💰 Total final: $<span id="totalFinal">{{ total }}</span></h2>
+    <h2 style="color:#2563eb;">
+        💰 Total final:
+        $<span id="totalFinal">{{ total }}</span>
+    </h2>
 
     <button type="submit"
-            style="padding:12px;width:100%;background:green;color:white;border:none;font-size:16px;">
+            style="
+                padding:15px;
+                width:100%;
+                background:#16a34a;
+                color:white;
+                border:none;
+                border-radius:8px;
+                font-size:18px;
+                font-weight:bold;
+            ">
         💰 FINALIZAR VENTA
     </button>
 
@@ -197,192 +296,308 @@
 <h3>🎁 Promos disponibles</h3>
 
 {% if promos %}
-<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
 
-{% for pr in promos %}
-<div style="border:2px dashed orange;padding:12px;border-radius:12px;background:#fff8e1;">
+<div style="
+    display:grid;
+    grid-template-columns:repeat(3,1fr);
+    gap:10px;
+">
 
-    <h4>🎁 {{ pr[1] }}</h4>
-    <p>{{ pr[2] }}</p>
-    <p><b>💰 ${{ pr[3] }}</b></p>
+    {% for pr in promos %}
+    <div style="
+        border:2px dashed orange;
+        padding:12px;
+        border-radius:12px;
+        background:#fff8e1;
+    ">
 
-    <form method="POST" action="/carrito/agregar"
-          style="display:flex;gap:5px;margin-top:10px;">
+        <h4>🎁 {{ pr[1] }}</h4>
 
-        <input type="hidden" name="codigo" value="PROMO-{{ pr[0] }}">
+        <p>{{ pr[2] }}</p>
 
-        <input type="number"
-               name="cantidad"
-               value="1"
-               min="1"
-               style="width:60px;padding:5px;">
+        <p>
+            <b>💰 ${{ pr[3] }}</b>
+        </p>
 
-        <button type="submit"
-                style="background:orange;color:white;border:none;border-radius:6px;padding:6px;">
-            ➕ Promo
-        </button>
+        <form method="POST"
+              action="/carrito/agregar"
+              style="display:flex;gap:5px;margin-top:10px;">
 
-    </form>
+            <input type="hidden"
+                   name="codigo"
+                   value="PROMO-{{ pr[0] }}">
+
+            <input type="number"
+                   name="cantidad"
+                   value="1"
+                   min="1"
+                   style="width:60px;padding:5px;">
+
+            <button type="submit"
+                    style="
+                        background:orange;
+                        color:white;
+                        border:none;
+                        border-radius:6px;
+                        padding:6px;
+                    ">
+                ➕ Promo
+            </button>
+
+        </form>
+
+    </div>
+    {% endfor %}
 
 </div>
-{% endfor %}
 
-</div>
 {% else %}
 <p>⚠️ No hay promos activas</p>
 {% endif %}
 
 <!-- ===================== MODAL BUSCADOR ===================== -->
-<div id="modalBuscador" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);justify-content:center;align-items:center;z-index:9999;">
-    <div style="background:white;padding:20px;border-radius:10px;width:600px;">
+<div id="modalBuscador"
+     style="
+        display:none;
+        position:fixed;
+        top:0;
+        left:0;
+        width:100%;
+        height:100%;
+        background:rgba(0,0,0,0.5);
+        justify-content:center;
+        align-items:center;
+        z-index:9999;
+     ">
+
+    <div style="
+        background:white;
+        padding:20px;
+        border-radius:10px;
+        width:600px;
+    ">
 
         <h2>🔎 Buscar producto</h2>
 
-        <input type="text" id="busqueda"
+        <input type="text"
+               id="busqueda"
                placeholder="Escribí nombre del producto..."
-               style="width:100%;padding:12px;margin-top:10px;">
+               style="
+                    width:100%;
+                    padding:12px;
+                    margin-top:10px;
+               ">
 
-        <div id="resultados" style="margin-top:15px;max-height:300px;overflow:auto;"></div>
+        <div id="resultados"
+             style="
+                margin-top:15px;
+                max-height:300px;
+                overflow:auto;
+             ">
+        </div>
 
-        <button onclick="cerrarBuscador()" style="margin-top:10px;">
+        <button onclick="cerrarBuscador()"
+                style="margin-top:10px;">
             Cerrar
         </button>
 
     </div>
+
 </div>
 
-<!-- ===================== MODAL VENTA DIRECTA ===================== -->
+<!-- ===================== MODAL VENTA MANUAL ===================== -->
 <div id="modalManual"
-     style="display:none;
-            position:fixed;
-            top:0;
-            left:0;
-            width:100%;
-            height:100%;
-            background:rgba(0,0,0,0.5);
-            justify-content:center;
-            align-items:center;
-            z-index:9999;">
+     style="
+        display:none;
+        position:fixed;
+        top:0;
+        left:0;
+        width:100%;
+        height:100%;
+        background:rgba(0,0,0,0.5);
+        justify-content:center;
+        align-items:center;
+        z-index:9999;
+     ">
 
-    <div style="background:white;padding:20px;border-radius:10px;width:300px;">
+    <div style="
+        background:white;
+        padding:20px;
+        border-radius:10px;
+        width:300px;
+    ">
 
         <h2>➕ Venta directa</h2>
 
-        <input type="text" id="manual_desc" placeholder="Descripción"
-               style="width:100%;padding:10px;margin-top:10px;">
+        <input type="text"
+               id="manual_desc"
+               placeholder="Descripción"
+               style="
+                    width:100%;
+                    padding:10px;
+                    margin-top:10px;
+               ">
 
-        <input type="number" id="manual_precio" placeholder="Precio"
-               style="width:100%;padding:10px;margin-top:10px;">
+        <input type="number"
+               id="manual_precio"
+               placeholder="Precio"
+               style="
+                    width:100%;
+                    padding:10px;
+                    margin-top:10px;
+               ">
 
-        <input type="number" id="manual_cantidad" value="1"
-               style="width:100%;padding:10px;margin-top:10px;">
+        <input type="number"
+               id="manual_cantidad"
+               value="1"
+               style="
+                    width:100%;
+                    padding:10px;
+                    margin-top:10px;
+               ">
 
         <button onclick="agregarManual()"
-                style="margin-top:10px;background:green;color:white;padding:10px;width:100%;">
+                style="
+                    margin-top:10px;
+                    background:green;
+                    color:white;
+                    padding:10px;
+                    width:100%;
+                ">
             Agregar
         </button>
 
         <button onclick="cerrarManual()"
-                style="margin-top:5px;width:100%;">
+                style="
+                    margin-top:5px;
+                    width:100%;
+                ">
             Cancelar
         </button>
 
     </div>
+
 </div>
 
 <!-- ===================== SCRIPT ===================== -->
 <script>
 
 function abrirVentaManual() {
-    const modal = document.getElementById("modalManual");
-    if (!modal) return;
-    modal.style.display = "flex";
+    document.getElementById("modalManual").style.display = "flex";
 }
 
 function cerrarManual() {
-    const modal = document.getElementById("modalManual");
-    if (modal) modal.style.display = "none";
+    document.getElementById("modalManual").style.display = "none";
 }
+
+function abrirBuscador() {
+
+    document.getElementById("modalBuscador").style.display = "flex";
+
+    document.getElementById("busqueda").focus();
+
+    activarBuscador();
+}
+
+function cerrarBuscador() {
+    document.getElementById("modalBuscador").style.display = "none";
+}
+
 function activarBuscador() {
 
     let input = document.getElementById("busqueda");
-
-    if (!input) return;
 
     input.oninput = function () {
 
         let texto = this.value;
 
         fetch(`/buscar_productos?q=${texto}`)
-            .then(res => res.json())
-            .then(data => {
+        .then(res => res.json())
+        .then(data => {
 
-                let html = "";
+            let html = "";
 
-                if (data.length === 0) {
-                    html = "<p>Sin resultados</p>";
-                }
+            if (data.length === 0) {
+                html = "<p>Sin resultados</p>";
+            }
 
-                data.forEach(p => {
-                    html += `
-                        <div style="padding:10px;border-bottom:1px solid #ddd;cursor:pointer;"
-                             onclick="agregarProducto('${p.codigo}')">
-                            📦 ${p.descripcion} - $${p.precio}
-                        </div>
-                    `;
-                });
+            data.forEach(p => {
 
-                document.getElementById("resultados").innerHTML = html;
+                html += `
+                    <div style="
+                        padding:10px;
+                        border-bottom:1px solid #ddd;
+                        cursor:pointer;
+                    "
+                    onclick="agregarProducto('${p.codigo}')">
+
+                        📦 ${p.descripcion} - $${p.precio}
+
+                    </div>
+                `;
             });
+
+            document.getElementById("resultados").innerHTML = html;
+        });
+
     };
 }
 
-function agregarManual() {
-
-    let desc = document.getElementById("manual_desc").value;
-    let precio = document.getElementById("manual_precio").value;
-    let cantidad = document.getElementById("manual_cantidad").value;
-
-    fetch("/carrito/agregar_manual", {
-        method: "POST",
-        headers: {"Content-Type": "application/x-www-form-urlencoded"},
-        body: `desc=${desc}&precio=${precio}&cantidad=${cantidad}`
-    }).then(() => location.reload());
-}
 function agregarProducto(codigo) {
+
+    const checkCanje =
+        document.getElementById("es_canje_main");
+
+    const esCanje =
+        checkCanje && checkCanje.checked
+        ? "true"
+        : "false";
 
     fetch("/carrito/agregar", {
         method: "POST",
         headers: {
-            "Content-Type": "application/x-www-form-urlencoded"
+            "Content-Type":
+            "application/x-www-form-urlencoded"
         },
-        body: `codigo=${codigo}&cantidad=1`
+        body:
+            `codigo=${codigo}&cantidad=1&es_canje=${esCanje}`
     })
-    .then(() => {
-        location.reload();
-    })
-    .catch(err => console.error("Error:", err));
+    .then(() => location.reload());
 }
-function abrirBuscador() {
-    const modal = document.getElementById("modalBuscador");
 
-    if (!modal) return;
+function agregarManual() {
 
-    modal.style.display = "flex";
+    let desc =
+        document.getElementById("manual_desc").value;
 
-    document.getElementById("busqueda").focus();
+    let precio =
+        document.getElementById("manual_precio").value;
 
-    activarBuscador(); // 🔥 ESTO ES CLAVE
-}
-function cerrarBuscador() {
-    const modal = document.getElementById("modalBuscador");
-    if (modal) modal.style.display = "none";
+    let cantidad =
+        document.getElementById("manual_cantidad").value;
+
+    fetch("/carrito/agregar_manual", {
+
+        method: "POST",
+
+        headers: {
+            "Content-Type":
+            "application/x-www-form-urlencoded"
+        },
+
+        body:
+            `desc=${desc}&precio=${precio}&cantidad=${cantidad}`
+
+    }).then(() => location.reload());
 }
 
 function calcularTotal() {
 
-    let metodo = document.getElementById("metodo_pago").value;
-    let recargoBox = document.getElementById("recargoBox");
+    let metodo =
+        document.getElementById("metodo_pago").value;
+
+    let recargoBox =
+        document.getElementById("recargoBox");
 
     let total = parseFloat(
         document.getElementById("total").innerText || 0
@@ -396,20 +611,23 @@ function calcularTotal() {
         document.getElementById("descuento").value || 0
     );
 
-    // 🔥 PUNTOS
     let puntos = parseFloat(
         document.getElementById("puntos_canje_dinero").value || 0
     );
 
-    // Mostrar/Ocultar recargo
+    // Mostrar recargo
     if (
         metodo === "tarjeta" ||
         metodo === "transferencia" ||
         metodo === "qr"
     ) {
+
         recargoBox.style.display = "block";
+
     } else {
+
         recargoBox.style.display = "none";
+
         recargo = 0;
     }
 
@@ -421,13 +639,12 @@ function calcularTotal() {
     let descuentoNormal =
         totalConRecargo * descuento / 100;
 
-    // 🔥 TOTAL FINAL
+    // Total final
     let totalFinal =
         totalConRecargo
         - descuentoNormal
         - puntos;
 
-    // Evitar negativos
     if (totalFinal < 0) {
         totalFinal = 0;
     }
@@ -436,158 +653,86 @@ function calcularTotal() {
         totalFinal.toFixed(2);
 }
 
-// ================= CLIENTE =================
-
-document.addEventListener("DOMContentLoaded", function () {
-
-    // CALCULAR TOTAL INICIAL
-    calcularTotal();
-
-    // OBTENER SELECT CLIENTE
-    const cliente = document.getElementById("cliente_id");
-
-    // SI NO EXISTE, SALIR
-    if (!cliente) return;
-
-    // EVENTO CAMBIO CLIENTE
-    cliente.addEventListener("change", cargarPuntosCliente);
-
-});
-
-
-// ================= CARGAR PUNTOS =================
-
 function cargarPuntosCliente() {
 
-    // ID CLIENTE
-    let id = document.getElementById("cliente_id").value;
+    let id =
+        document.getElementById("cliente_id").value;
 
-    // SI NO HAY CLIENTE
     if (!id) {
 
-        // OCULTAR PANEL
-        document.getElementById("seccion_puntos").style.display = "none";
+        document.getElementById("seccion_puntos").style.display =
+            "none";
 
-        // RESETEAR DESCUENTO
-        document.getElementById("puntos_canje_dinero").value = 0;
+        document.getElementById("puntos_canje_dinero").value =
+            0;
 
-        // RECALCULAR TOTAL
         calcularTotal();
 
         return;
     }
 
-    // CONSULTAR API
     fetch(`/api/cliente/validar_puntos/${id}`)
-        .then(res => res.json())
-        .then(data => {
+    .then(res => res.json())
+    .then(data => {
 
-            console.log("DATOS CLIENTE:", data);
+        document.getElementById("seccion_puntos").style.display =
+            "block";
 
-            // MOSTRAR PANEL
-            document.getElementById("seccion_puntos").style.display = "block";
+        document.getElementById("puntos_cliente").innerText =
+            data.puntos || 0;
 
-            // PUNTOS
-            document.getElementById("puntos_cliente").innerText =
-                data.puntos || 0;
+        document.getElementById("equiv_pesos").innerText =
+            data.descuento_disponible || 0;
 
-            // DESCUENTO DISPONIBLE
-            document.getElementById("equiv_pesos").innerText =
-                data.descuento_disponible || 0;
-
-            // GUARDAR GLOBAL
-            window.puntosDisponibles =
-                data.descuento_disponible || 0;
-
-        })
-        .catch(error => {
-
-            console.error("ERROR:", error);
-
-            // OCULTAR PANEL SI HAY ERROR
-            document.getElementById("seccion_puntos").style.display = "none";
-
-        });
+        window.puntosDisponibles =
+            data.descuento_disponible || 0;
+    });
 }
-
-
-// ================= APLICAR PUNTOS =================
 
 function aplicarPuntosComoDescuento() {
 
-    // TOTAL CARRITO
     let total = parseFloat(
         document.getElementById("total").innerText || 0
     );
 
-    // PUNTOS DISPONIBLES
     let puntos = parseFloat(
         window.puntosDisponibles || 0
     );
 
-    // DESCUENTO A USAR
     let descuentoAplicado =
         puntos > total
         ? total
         : puntos;
 
-    // GUARDAR DESCUENTO
-    document.getElementById(
-        "puntos_canje_dinero"
-    ).value = descuentoAplicado;
+    document.getElementById("puntos_canje_dinero").value =
+        descuentoAplicado;
 
-    // RECALCULAR TOTAL
     calcularTotal();
 
-    // ALERTA
     alert(
         "⭐ Se aplicaron $" +
         descuentoAplicado +
         " en descuentos"
     );
 }
-// ===================== F10 (TECLADO GLOBAL) =====================
-window.addEventListener("keydown", function (e) {
-    if (e.key === "F10") {
-        e.preventDefault(); // evita comportamiento raro del navegador
-        abrirBuscador();    // abre tu modal
-    }
+
+document.addEventListener("DOMContentLoaded", function () {
+
+    calcularTotal();
+
 });
 
+window.addEventListener("keydown", function (e) {
+
+    if (e.key === "F10") {
+
+        e.preventDefault();
+
+        abrirBuscador();
+    }
+
+});
 
 </script>
-<!-- ===================== MODAL BUSCADOR ===================== -->
-<div id="modalBuscador"
-     style="display:none;
-            position:fixed;
-            top:0;
-            left:0;
-            width:100%;
-            height:100%;
-            background:rgba(0,0,0,0.5);
-            justify-content:center;
-            align-items:center;
-            z-index:9999;">
-
-    <div style="background:white;padding:20px;border-radius:10px;width:600px;">
-
-        <h2>🔎 Buscar producto</h2>
-
-        <input type="text"
-               id="busqueda"
-               placeholder="Escribí nombre del producto..."
-               style="width:100%;padding:12px;margin-top:10px;">
-
-        <div id="resultados"
-             style="margin-top:15px;max-height:300px;overflow:auto;"></div>
-
-        <button onclick="cerrarBuscador()"
-                style="margin-top:10px;padding:8px 15px;">
-            Cerrar
-        </button>
-
-    </div>
-</div>
-
 
 {% endblock %}
