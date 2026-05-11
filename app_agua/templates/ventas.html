@@ -96,13 +96,13 @@
 <input type="hidden" name="puntos_canje_dinero" id="puntos_canje_dinero" value="0">
 
 
-    <!-- NUEVO: SELECCIÓN DE CLIENTE PARA PUNTOS -->
     <div style="margin-bottom: 15px;">
         <label><b>👤 Seleccionar Cliente (Suma/Resta Puntos)</b></label>
-        <select name="cliente_id" id="cliente_id_selector" style="width: 100%; ...">
+        <select name="cliente_id" id="cliente_id_selector" style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #ccc;">
             <option value="">👤 Consumidor Final</option>
             {% for cli in clientes %}
-                <option value="{{ cli.id }}">{{ cli.nombre }} (Puntos: {{ cli.puntos_acumulados }})</option>
+                <!-- Importante: Accedemos por índice si usas fetchall() o por nombre si usas Row -->
+                <option value="{{ cli.id }}">{{ cli.nombre }} (Puntos: {{ cli.puntos_acumulados or 0 }})</option>
             {% endfor %}
         </select>
     </div>
@@ -211,34 +211,7 @@
 </div>
 
 <script>
-document.getElementById("cliente_id_selector").addEventListener("change", function() {
-    let id = this.value;
-    const seccionPuntos = document.getElementById("seccion_puntos");
 
-    if (id) {
-        console.log("Cargando puntos para cliente ID:", id);
-        fetch(`/api/cliente/validar_puntos/${id}`)
-            .then(res => {
-                if (!res.ok) throw new Error("Error en la respuesta del servidor");
-                return res.json();
-            })
-            .then(data => {
-                // Si el cliente tiene puntos, mostramos la sección
-                seccionPuntos.style.display = "block";
-                document.getElementById("puntos_cliente").innerText = data.puntos;
-                document.getElementById("equiv_pesos").innerText = data.descuento_disponible;
-                window.puntos_disponibles = data.puntos;
-            })
-            .catch(err => {
-                console.error("❌ Error al validar puntos:", err);
-                seccionPuntos.style.display = "none";
-            });
-    } else {
-        seccionPuntos.style.display = "none";
-        document.getElementById("puntos_canje_dinero").value = 0;
-        calcularTotal();
-    }
-});
 
 function aplicarPuntosComoDescuento() {
     let totalCarrito = parseFloat(document.getElementById("total").innerText);
@@ -419,6 +392,34 @@ window.addEventListener("keydown", function (e) {
     if (e.key === "F10") {
         e.preventDefault(); // evita comportamiento raro del navegador
         abrirBuscador();    // abre tu modal
+    }
+});
+    document.getElementById("cliente_id_selector").addEventListener("change", function() {
+    let id = this.value;
+    const seccionPuntos = document.getElementById("seccion_puntos");
+
+    if (id) {
+        console.log("Cargando puntos para cliente ID:", id);
+        fetch(`/api/cliente/validar_puntos/${id}`)
+            .then(res => {
+                if (!res.ok) throw new Error("Error en la respuesta del servidor");
+                return res.json();
+            })
+            .then(data => {
+                // Si el cliente tiene puntos, mostramos la sección
+                seccionPuntos.style.display = "block";
+                document.getElementById("puntos_cliente").innerText = data.puntos;
+                document.getElementById("equiv_pesos").innerText = data.descuento_disponible;
+                window.puntos_disponibles = data.puntos;
+            })
+            .catch(err => {
+                console.error("❌ Error al validar puntos:", err);
+                seccionPuntos.style.display = "none";
+            });
+    } else {
+        seccionPuntos.style.display = "none";
+        document.getElementById("puntos_canje_dinero").value = 0;
+        calcularTotal();
     }
 });
 
