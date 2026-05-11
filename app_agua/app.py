@@ -2197,6 +2197,21 @@ def carrito_confirmar():
         return f"❌ Error en venta: {e}"
     finally:
         if con: con.close()
+@app.route("/api/cliente/validar_puntos/<int:id>")
+def api_validar_puntos(id):
+    con = get_db_local()
+    cur = con.cursor()
+    cur.execute("SELECT puntos_acumulados FROM usuarios WHERE id = ?", (id,))
+    res = cur.fetchone()
+    con.close()
+    
+    puntos = 0
+    if res:
+        # Ajusta esto si usas row_factory o tupla
+        puntos = res[0] if isinstance(res, tuple) else res.get('puntos_acumulados', 0)
+        
+    return jsonify({"puntos": puntos, "descuento_disponible": puntos})
+
 
 @app.route("/caja/cerrar", methods=["POST"])
 def cierre_caja():
