@@ -99,15 +99,16 @@
     <!-- NUEVO: SELECCIÓN DE CLIENTE PARA PUNTOS -->
     <div style="margin-bottom: 15px;">
         <label><b>👤 Seleccionar Cliente (Suma/Resta Puntos)</b></label>
-        <select name="cliente_id" id="cliente_id" style="width: 100%; padding: 12px; margin-top: 5px; border-radius: 8px; border: 1px solid #ccc;">
+        <select name="cliente_id" id="cliente_id" style="width: 100%; padding: 12px; ...">
             <option value="">👤 Consumidor Final (No suma puntos)</option>
             {% for cli in clientes %}
-                <!-- FIX: puntos_acumulados (con una sola 'c') -->
-                <option value="{{ cli.id }}">
-                    {{ cli.nombre }} (Puntos: {{ cli.puntos_acumulados or 0 }})
+                <!-- cli[0] es el ID, cli[1] es el Nombre, cli[2] son los Puntos -->
+                <option value="{{ cli[0] }}" data-puntos="{{ cli[2] }}">
+                    {{ cli[1] }} (Puntos: {{ cli[2] or 0 }})
                 </option>
             {% endfor %}
         </select>
+
     </div>
 
 
