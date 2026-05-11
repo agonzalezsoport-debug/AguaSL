@@ -503,7 +503,20 @@ function aplicarPuntosComoDescuento() {
 }
 
 
-window.onload = calcularTotal;
+window.onload = null;
+document.addEventListener("DOMContentLoaded", function () {
+
+    calcularTotal();
+
+    const cliente = document.getElementById("cliente_id");
+
+    if (cliente) {
+
+        cliente.dispatchEvent(new Event("change"));
+
+    }
+
+});    
 // ===================== F10 (TECLADO GLOBAL) =====================
 window.addEventListener("keydown", function (e) {
     if (e.key === "F10") {
