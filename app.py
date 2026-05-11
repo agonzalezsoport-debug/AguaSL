@@ -2012,42 +2012,32 @@ def debug_promos():
     return str(data)
 @app.route("/ventas_ui")
 def ventas_ui():
-    cajero_nombre = session.get("nombre_cajero", "admin")
-    print("DEBUG CAJERO_ID:", session.get("cajero_id"))
-    print("DEBUG CAJERO_NOMBRE:", session.get("nombre_cajero"))
-
     con = get_db()
     cur = con.cursor()
-
-    # ================= PRODUCTOS =================
-    ejecutar(cur, con, "SELECT * FROM productos")
+    
+    # 1. Traer productos y promos (esto ya lo tenés)
+    cur.execute("SELECT * FROM productos")
     productos = cur.fetchall()
-
-    # ================= PROMOS =================
-    ejecutar(cur, con, """
-        SELECT id, nombre, descripcion, precio 
-        FROM promos 
-        WHERE activa=1
-    """)
+    cur.execute("SELECT id, nombre, descripcion, precio FROM promos WHERE activa=1")
     promos = cur.fetchall()
 
+    # 2. 🔥 EL FIX: Traer los clientes para el desplegable
+    # Asegurate de que la consulta no los filtre por error
+    cur.execute("SELECT id, nombre, puntos_acumulados FROM usuarios")
+    lista_clientes = cur.fetchall()
+    
     con.close()
-
-    # ================= CARRITO =================
-    carrito = session.get("carrito", [])
-
-    subtotal = sum(
-        float(i["precio"]) * int(i["cantidad"])
-        for i in carrito
-    )
-
+    
+    # 3. PASARLOS AL HTML (Asegurate que el nombre coincida con el for del HTML)
     return render_template(
-        "ventas.html",
-        productos=productos,
-        promos=promos,
-        carrito=carrito,
-        total=subtotal
+        "ventas.html", 
+        productos=productos, 
+        promos=promos, 
+        clientes=lista_clientes, # <--- Este nombre debe usar el HTML
+        carrito=session.get("carrito", []),
+        total=sum(float(i["precio"]) * int(i["cantidad"]) for i in session.get("carrito", []))
     )
+
 @app.route("/carrito/confirmar", methods=["POST"])
 def carrito_confirmar():
     carrito = session.get("carrito", [])
