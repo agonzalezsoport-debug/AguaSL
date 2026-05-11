@@ -97,14 +97,13 @@
 
 
     <div style="margin-bottom: 15px;">
-        <label><b>👤 Seleccionar Cliente (Suma/Resta Puntos)</b></label>
-        <select name="cliente_id" id="cliente_id_selector" style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #ccc;">
+        <select name="cliente_id" id="cliente_id_selector" style="...">
             <option value="">👤 Consumidor Final</option>
             {% for cli in clientes %}
-                <!-- Importante: Accedemos por índice si usas fetchall() o por nombre si usas Row -->
-                <option value="{{ cli.id }}">{{ cli.nombre }} (Puntos: {{ cli.puntos_acumulados or 0 }})</option>
+                <option value="{{ cli.id }}">{{ cli.nombre }}</option>
             {% endfor %}
         </select>
+
     </div>
 
     <label>💳 Método de pago</label>
