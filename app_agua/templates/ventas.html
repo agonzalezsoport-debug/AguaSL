@@ -46,12 +46,18 @@
            style="width:100px;padding:10px;font-size:16px;"
            required>
 
+    <!-- Checkbox de Canje -->
+    <label style="background: #fef3c7; padding: 10px; border-radius: 8px; border: 1px solid #f59e0b; cursor: pointer; display: flex; align-items: center; gap: 5px; font-size: 14px;">
+        <input type="checkbox" name="es_canje" id="es_canje_main"> 
+        <span style="font-weight: bold; color: #92400e;">🔄 ¿ES CANJE?</span>
+    </label>
+
     <button type="submit"
-            style="padding:10px 20px;background:green;color:white;border:none;border-radius:8px;">
+            style="padding:10px 20px;background:green;color:white;border:none;border-radius:8px;font-weight:bold;cursor:pointer;">
         ➕ Agregar
     </button>
-
 </form>
+
 
 </div>
 
@@ -85,10 +91,24 @@
 </div>
 
 <!-- ===================== VENTA ===================== -->
-<form method="POST" action="/carrito/confirmar" style="margin-top:15px;">
+<form method="POST" action="/carrito/confirmar" style="margin-top:15px; background: #fff; padding: 15px; border-radius: 10px; border: 1px solid #ddd;">
+    <!-- Agregá esto dentro del formulario de venta -->
+<input type="hidden" name="puntos_canje_dinero" id="puntos_canje_dinero" value="0">
+
+
+    <!-- NUEVO: SELECCIÓN DE CLIENTE PARA PUNTOS -->
+    <div style="margin-bottom: 15px;">
+        <label><b>👤 Seleccionar Cliente (Suma/Resta Puntos)</b></label>
+        <select name="cliente_id" style="width: 100%; padding: 12px; margin-top: 5px; border-radius: 8px; border: 1px solid #ccc;">
+            <option value="">👤 Consumidor Final (No suma puntos)</option>
+            {% for cli in clientes %}
+            <option value="{{ cli.id }}">{{ cli.nombre }} (Puntos: {{ cli.puntos_accumulados }})</option>
+            {% endfor %}
+        </select>
+    </div>
 
     <label>💳 Método de pago</label>
-    <select name="metodo_pago" id="metodo_pago" onchange="calcularTotal()">
+    <select name="metodo_pago" id="metodo_pago" onchange="calcularTotal()" style="width: 100%; padding: 10px; border-radius: 8px;">
         <option value="efectivo">💵 Efectivo</option>
         <option value="transferencia">🏦 Transferencia</option>
         <option value="tarjeta">💳 Tarjeta</option>
@@ -100,24 +120,25 @@
         <label>🎯 Descuento %</label>
         <input type="number" id="descuento" name="descuento"
                value="0" min="0" max="100"
-               oninput="calcularTotal()">
+               oninput="calcularTotal()" style="width: 60px; padding: 5px;">
     </div>
 
     <div id="recargoBox" style="display:none;margin-top:10px;">
         <label>Recargo %</label>
         <input type="number" id="recargo" name="recargo"
                value="0" min="0" max="50"
-               oninput="calcularTotal()">
+               oninput="calcularTotal()" style="width: 60px; padding: 5px;">
     </div>
 
-    <h2>💰 Total final: $<span id="totalFinal">{{ total }}</span></h2>
+    <h2 style="color: #2563eb;">💰 Total final: $<span id="totalFinal">{{ total }}</span></h2>
 
     <button type="submit"
-            style="padding:12px;width:100%;background:green;color:white;border:none;font-size:16px;">
+            style="padding:15px; width:100%; background: #16a34a; color:white; border:none; border-radius: 8px; font-size:18px; font-weight: bold; cursor: pointer;">
         💰 FINALIZAR VENTA
     </button>
 
 </form>
+
 
 {% else %}
 <p>🛒 Carrito vacío</p>
@@ -180,6 +201,55 @@
 
     </div>
 </div>
+<!-- Debajo del selector de cliente en el POS -->
+<div id="seccion_puntos" style="display:none; background: #e0f2fe; padding: 10px; border-radius: 8px; margin-top: 10px;">
+    <p>🌟 Puntos: <span id="puntos_cliente">0</span> (Equivale a: $<span id="equiv_pesos">0</span>)</p>
+    <button type="button" onclick="aplicarPuntosComoDescuento()" 
+            style="background: #0369a1; color: white; border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer;">
+        Aplicar Descuento por Puntos
+    </button>
+</div>
+
+<script>
+document.getElementsByName("cliente_id")[0].onchange = function() {
+    let id = this.value;
+    if(id) {
+        fetch(`/api/cliente/validar_puntos/${id}`)
+            .then(res => res.json())
+            .then(data => {
+                document.getElementById("seccion_puntos").style.display = "block";
+                document.getElementById("puntos_cliente").innerText = data.puntos;
+                document.getElementById("equiv_pesos").innerText = data.descuento_disponible;
+                window.puntos_disponibles = data.puntos; // Guardamos para el cálculo
+            });
+    } else {
+        document.getElementById("seccion_puntos").style.display = "none";
+    }
+};
+
+function aplicarPuntosComoDescuento() {
+    let totalCarrito = parseFloat(document.getElementById("total").innerText);
+    let puntosDisponibles = parseFloat(window.puntos_disponibles || 0);
+    
+    // Regla: 1 punto = $1. No podemos descontar más de lo que vale la compra.
+    let descuentoPesos = puntosDisponibles > totalCarrito ? totalCarrito : puntosDisponibles;
+    
+    // 1. Guardamos el valor exacto para que el servidor los reste de la DB
+    document.getElementById("puntos_canje_dinero").value = descuentoPesos;
+    
+    // 2. Aplicamos visualmente (esto es lo que ya tenías)
+    // Calculamos qué porcentaje del total representan esos puntos
+    let porc = (descuentoPesos * 100) / totalCarrito;
+    document.getElementById("descuento").value = porc.toFixed(2);
+    
+    // 3. Recalculamos el total final en pantalla
+    calcularTotal();
+    
+    alert("⭐ Se aplicó un descuento de $" + descuentoPesos + " por tus puntos.");
+}
+
+</script>
+
 
 <!-- ===================== MODAL VENTA DIRECTA ===================== -->
 <div id="modalManual"
@@ -219,6 +289,7 @@
 
     </div>
 </div>
+
 
 <!-- ===================== SCRIPT ===================== -->
 <script>
@@ -280,19 +351,17 @@ function agregarManual() {
     }).then(() => location.reload());
 }
 function agregarProducto(codigo) {
+    // Buscamos el checkbox de la pantalla principal
+    const checkCanje = document.getElementById("es_canje_main");
+    const esCanje = checkCanje ? checkCanje.checked : false;
 
     fetch("/carrito/agregar", {
         method: "POST",
-        headers: {
-            "Content-Type": "application/x-www-form-urlencoded"
-        },
-        body: `codigo=${codigo}&cantidad=1`
-    })
-    .then(() => {
-        location.reload();
-    })
-    .catch(err => console.error("Error:", err));
+        headers: {"Content-Type": "application/x-www-form-urlencoded"},
+        body: `codigo=${codigo}&cantidad=1&es_canje=${esCanje}`
+    }).then(() => location.reload());
 }
+
 function abrirBuscador() {
     const modal = document.getElementById("modalBuscador");
 
