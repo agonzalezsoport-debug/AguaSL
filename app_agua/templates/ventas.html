@@ -159,13 +159,14 @@
             <option value="">Consumidor Final</option>
         
             {% for cli in clientes %}
-            <option value="{{ cli['id'] }}">
-                {{ cli['nombre'] }}
-                - ⭐ {{ cli['puntos_acumulados'] or 0 }}
+            <option value="{{ cli[0] }}">
+                {{ cli[1] }}
+                - ⭐ {{ cli[2] or 0 }}
             </option>
             {% endfor %}
         
         </select>
+
 
 
     </div>
