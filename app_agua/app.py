@@ -2094,7 +2094,7 @@ def carrito_confirmar():
     carrito = session.get("carrito", [])
     if not carrito: return "❌ Carrito vacío"
 
-    # Captura de datos desde el formulario HTML
+    # 1. CAPTURA DE DATOS
     cliente_id = request.form.get("cliente_id")
     puntos_canjeados = float(request.form.get("puntos_canje_dinero") or 0)
     metodo_pago = request.form.get("metodo_pago")
@@ -2102,56 +2102,59 @@ def carrito_confirmar():
     descuento_porc = float(request.form.get("descuento") or 0)
     caja_id = session.get("caja_id")
 
-    con = get_db_local() 
+    con = get_db_local()
     cur = con.cursor()
 
     try:
-        # Cálculos de dinero
+        # CÁLCULOS
         subtotal = sum(float(i["precio"]) * int(i["cantidad"]) for i in carrito)
         recargo_valor = subtotal * (recargo_porc / 100)
         descuento_valor = subtotal * (descuento_porc / 100)
-        
-        # RESTAR PUNTOS DEL TOTAL
         total_final = subtotal + recargo_valor - descuento_valor - puntos_canjeados
         total_final = max(0, total_final)
 
         venta_id = str(uuid.uuid4())
         fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        # 1. Guardar venta localmente
+        # 2. GUARDAR VENTA LOCAL (Esto asegura que no pierdas la venta)
         cur.execute("""
             INSERT INTO ventas (id, fecha, total, recargo, descuento, total_final, metodo_pago, cajero, caja_id)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (venta_id, fecha, subtotal, recargo_valor, (descuento_valor + puntos_canjeados), total_final, metodo_pago, "admin", caja_id))
         
-        # ... (aquí sigue tu código de insertar items) ...
-        con.commit()
+        # Inserción de items (tu lógica original)
+        for item in carrito:
+            cur.execute("INSERT INTO venta_items (id, venta_id, producto_id, cantidad, subtotal) VALUES (?, ?, ?, ?, ?)",
+                       (str(uuid.uuid4()), venta_id, item["id"], item["cantidad"], float(item["precio"]) * int(item["cantidad"])))
 
-        # 2. IMPACTAR PUNTOS EN SUPABASE (SUMA Y RESTA)
+        con.commit() # Venta guardada localmente con éxito
+
+        # 3. ACTUALIZAR PUNTOS EN LA NUBE (Con bloque independiente para que no rompa la venta)
         if cliente_id and cliente_id.strip() != "":
-            cloud_con = get_db_cloud() # Tu conexión a la nube
-            cloud_cur = cloud_con.cursor()
-
-            # Calculamos puntos nuevos: 1% de la compra actual
-            puntos_ganados = total_final * 0.01 
-
-            # Restamos lo canjeado y sumamos lo nuevo en un solo paso
-            cloud_cur.execute("""
-                UPDATE usuarios 
-                SET puntos_acumulados = COALESCE(puntos_acumulados, 0) - %s + %s
-                WHERE id = %s
-            """, (puntos_canjeados, puntos_ganados, cliente_id))
-            
-            cloud_con.commit()
-            cloud_con.close()
+            try:
+                cloud_con = get_db_cloud()
+                cloud_cur = cloud_con.cursor()
+                
+                puntos_ganados = total_final * 0.01 # 1% de la compra
+                
+                cloud_cur.execute("""
+                    UPDATE usuarios 
+                    SET puntos_acumulados = COALESCE(puntos_acumulados, 0) - %s + %s
+                    WHERE id = %s
+                """, (puntos_canjeados, puntos_ganados, cliente_id))
+                
+                cloud_con.commit()
+                cloud_con.close()
+            except Exception as e_cloud:
+                print(f"⚠️ Error actualizando puntos en nube (Venta guardada local): {e_cloud}")
 
         session["carrito"] = []
         return redirect("/ventas_ui")
 
     except Exception as e:
         if con: con.rollback()
-        print(f"ERROR: {e}")
-        return f"❌ Error: {e}"
+        print(f"❌ ERROR CRÍTICO VENTA: {e}")
+        return f"Error: {e}"
     finally:
         con.close()
 
