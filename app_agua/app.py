@@ -443,46 +443,6 @@ def count_pedidos():
 def vaciar_carrito():
     session.pop("carrito_cliente", None)
     return redirect("/tienda")
-@app.route("/api/cliente/validar_puntos/<int:cliente_id>")
-def validar_puntos(cliente_id):
-
-    con = get_db_cloud()
-    cur = con.cursor(cursor_factory=RealDictCursor)
-
-    try:
-
-        cur.execute("""
-            SELECT COALESCE(puntos_acumulados,0) AS puntos
-            FROM usuarios
-            WHERE id = %s
-        """, (cliente_id,))
-
-        cliente = cur.fetchone()
-
-        if not cliente:
-            return jsonify({
-                "puntos": 0,
-                "descuento_disponible": 0
-            })
-
-        puntos = float(cliente["puntos"])
-
-        return jsonify({
-            "puntos": puntos,
-            "descuento_disponible": puntos
-        })
-
-    except Exception as e:
-
-        print("❌ ERROR validar_puntos:", e)
-
-        return jsonify({
-            "puntos": 0,
-            "descuento_disponible": 0
-        })
-
-    finally:
-        con.close()
 
 @app.route("/")
 def index():
@@ -2051,113 +2011,142 @@ def debug_promos():
     return str(data)
 @app.route("/ventas_ui")
 def ventas_ui():
+    cajero_nombre = session.get("nombre_cajero", "admin")
+    print("DEBUG CAJERO_ID:", session.get("cajero_id"))
+    print("DEBUG CAJERO_NOMBRE:", session.get("nombre_cajero"))
 
-    # 🔥 SIEMPRE SUPABASE
-    con = get_db_cloud()
+    con = get_db()
     cur = con.cursor()
 
-    # PRODUCTOS
-    cur.execute("SELECT * FROM productos")
+    # ================= PRODUCTOS =================
+    ejecutar(cur, con, "SELECT * FROM productos")
     productos = cur.fetchall()
 
-    # PROMOS
-    cur.execute("""
+    # ================= PROMOS =================
+    ejecutar(cur, con, """
         SELECT id, nombre, descripcion, precio 
         FROM promos 
         WHERE activa=1
     """)
     promos = cur.fetchall()
 
-    # CLIENTES
-    cur.execute("""
-        SELECT id, nombre, puntos_acumulados 
-        FROM usuarios
-        ORDER BY nombre ASC
-    """)
-    lista_clientes = cur.fetchall()
-
     con.close()
+
+    # ================= CARRITO =================
+    carrito = session.get("carrito", [])
+
+    subtotal = sum(
+        float(i["precio"]) * int(i["cantidad"])
+        for i in carrito
+    )
 
     return render_template(
         "ventas.html",
         productos=productos,
         promos=promos,
-        clientes=lista_clientes,
-        carrito=session.get("carrito", []),
-        total=sum(
-            float(i["precio"]) * int(i["cantidad"])
-            for i in session.get("carrito", [])
-        )
+        carrito=carrito,
+        total=subtotal
     )
 @app.route("/carrito/confirmar", methods=["POST"])
 def carrito_confirmar():
     carrito = session.get("carrito", [])
-    if not carrito: return "❌ Carrito vacío"
+    if not carrito:
+        return "❌ Carrito vacío"
 
-    # 1. CAPTURA DE DATOS
-    cliente_id = request.form.get("cliente_id")
-    puntos_canjeados = float(request.form.get("puntos_canje_dinero") or 0)
-    metodo_pago = request.form.get("metodo_pago")
-    recargo_porc = float(request.form.get("recargo") or 0)
-    descuento_porc = float(request.form.get("descuento") or 0)
     caja_id = session.get("caja_id")
+    if not caja_id:
+        return "❌ Debes abrir caja primero"
 
-    con = get_db_local()
+    con = get_db_local() 
     cur = con.cursor()
 
     try:
-        # CÁLCULOS
-        subtotal = sum(float(i["precio"]) * int(i["cantidad"]) for i in carrito)
-        recargo_valor = subtotal * (recargo_porc / 100)
-        descuento_valor = subtotal * (descuento_porc / 100)
-        total_final = subtotal + recargo_valor - descuento_valor - puntos_canjeados
-        total_final = max(0, total_final)
+        metodo_pago = request.form.get("metodo_pago")
+        recargo_porc = float(request.form.get("recargo") or 0)
+        descuento_porc = float(request.form.get("descuento") or 0)
 
+        if not metodo_pago:
+            return "❌ Selecciona método de pago"
+
+        cajero_nombre = "admin" if session.get("admin") else session.get("nombre_cajero")
         venta_id = str(uuid.uuid4())
         fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        # 2. GUARDAR VENTA LOCAL (Esto asegura que no pierdas la venta)
+        subtotal = sum(float(i["precio"]) * int(i["cantidad"]) for i in carrito)
+        recargo_valor = subtotal * (recargo_porc / 100)
+        descuento_valor = subtotal * (descuento_porc / 100)
+        total_final = subtotal + recargo_valor - descuento_valor
+
+        # 1. INSERT VENTA LOCAL
         cur.execute("""
             INSERT INTO ventas (id, fecha, total, recargo, descuento, total_final, metodo_pago, cajero, caja_id)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (venta_id, fecha, subtotal, recargo_valor, (descuento_valor + puntos_canjeados), total_final, metodo_pago, "admin", caja_id))
-        
-        # Inserción de items (tu lógica original)
+        """, (venta_id, fecha, subtotal, recargo_valor, descuento_valor, total_final, metodo_pago, cajero_nombre, caja_id))
+
+        # 2. INSERT ITEMS LOCALES
+        items_para_sync = []
         for item in carrito:
-            cur.execute("INSERT INTO venta_items (id, venta_id, producto_id, cantidad, subtotal) VALUES (?, ?, ?, ?, ?)",
-                       (str(uuid.uuid4()), venta_id, item["id"], item["cantidad"], float(item["precio"]) * int(item["cantidad"])))
+            item_id = str(uuid.uuid4())
+            cant_vendida = int(item["cantidad"])
+            sub_item = float(item["precio"]) * cant_vendida
+            
+            # --- CORRECCIÓN DE LITROS ---
+            litros_totales_item = 0
+            
+            # SÓLO buscamos litros si NO es una promo
+            if "promo_" not in str(item["id"]):
+                cur.execute("SELECT litros FROM productos WHERE id = ?", (item["id"],))
+                res_prod = cur.fetchone()
+                
+                if res_prod:
+                    # Manejo robusto: intentamos por nombre de columna, sino por índice 0
+                    try:
+                        litros_unidad = float(res_prod["litros"] or 0)
+                    except:
+                        litros_unidad = float(res_prod[0] or 0)
+                    
+                    litros_totales_item = litros_unidad * cant_vendida
+            # ----------------------------
 
-        con.commit() # Venta guardada localmente con éxito
+            cur.execute("""
+                INSERT INTO venta_items (id, venta_id, producto_id, cantidad, litros_total, subtotal)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (item_id, venta_id, item["id"], cant_vendida, litros_totales_item, sub_item))
+            
+            items_para_sync.append({
+                "id": item_id, 
+                "venta_id": venta_id, 
+                "producto_id": item["id"],
+                "cantidad": cant_vendida, 
+                "litros_total": litros_totales_item,
+                "subtotal": sub_item
+            })
 
-        # 3. ACTUALIZAR PUNTOS EN LA NUBE (Con bloque independiente para que no rompa la venta)
-        if cliente_id and cliente_id.strip() != "":
-            try:
-                cloud_con = get_db_cloud()
-                cloud_cur = cloud_con.cursor()
-                
-                puntos_ganados = total_final * 0.01 # 1% de la compra
-                
-                cloud_cur.execute("""
-                    UPDATE usuarios 
-                    SET puntos_acumulados = COALESCE(puntos_acumulados, 0) - %s + %s
-                    WHERE id = %s
-                """, (puntos_canjeados, puntos_ganados, cliente_id))
-                
-                cloud_con.commit()
-                cloud_con.close()
-            except Exception as e_cloud:
-                print(f"⚠️ Error actualizando puntos en nube (Venta guardada local): {e_cloud}")
+        con.commit()
+
+        # ================= SYNC =================
+        save_offline("ventas", "insert", {
+            "id": venta_id, "fecha": fecha, "total": subtotal,
+            "recargo": recargo_valor, "descuento": descuento_valor,
+            "total_final": total_final, "metodo_pago": metodo_pago, 
+            "cajero": cajero_nombre, "caja_id": caja_id
+        })
+
+        for item_s in items_para_sync:
+            save_offline("venta_items", "insert", item_s)
+            save_offline("productos", "update", {
+                "id": item_s["producto_id"],
+                "stock_restar": item_s["cantidad"] 
+            })
 
         session["carrito"] = []
         return redirect("/ventas_ui")
 
     except Exception as e:
         if con: con.rollback()
-        print(f"❌ ERROR CRÍTICO VENTA: {e}")
-        return f"Error: {e}"
+        return f"❌ Error en venta: {e}"
     finally:
-        con.close()
-
+        if con: con.close()
 
 @app.route("/caja/cerrar", methods=["POST"])
 def cierre_caja():
