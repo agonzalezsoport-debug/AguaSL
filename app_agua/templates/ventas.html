@@ -616,32 +616,48 @@ function calcularTotal() {
     document.getElementById("totalFinal").innerText = totalFinal.toFixed(2);
 }
 function cargarPuntosCliente() {
-    let id = document.getElementById("cliente_id").value;
+    let select = document.getElementById("cliente_id");
+    let id = select.value;
 
-    // Si no hay cliente seleccionado (Consumidor Final)
-    if (!id) {
+    console.log("ID seleccionado:", id); // Ver en F12
+
+    if (!id || id === "") {
         document.getElementById("seccion_puntos").style.display = "none";
-        document.getElementById("puntos_canje_dinero").value = 0;
-        calcularTotal(); // Recalcula para quitar descuentos previos
         return;
     }
 
-    // Petición a la API
+    // Alerta de prueba para ver si arranca
+    console.log("Llamando a la API...");
+
     fetch(`/api/cliente/validar_puntos/${id}`)
-        .then(res => res.json())
+        .then(res => {
+            if (!res.ok) {
+                alert("Error: El servidor no encontró la ruta de puntos (404)");
+                throw new Error("Error 404");
+            }
+            return res.json();
+        })
         .then(data => {
-            // Mostrar el panel azul
-            document.getElementById("seccion_puntos").style.display = "block";
+            console.log("Datos recibidos:", data);
             
-            // Actualizar textos en el panel
+            // ESTA ES LA LÍNEA QUE MUESTRA EL BOTÓN
+            let panel = document.getElementById("seccion_puntos");
+            if (panel) {
+                panel.style.display = "block";
+                console.log("Panel activado");
+            } else {
+                alert("Error: No se encontró el ID 'seccion_puntos' en el HTML");
+            }
+
             document.getElementById("puntos_cliente").innerText = data.puntos || 0;
             document.getElementById("equiv_pesos").innerText = data.descuento_disponible || 0;
-            
-            // Guardar en variable global para la función de aplicar
             window.puntosDisponibles = parseFloat(data.descuento_disponible) || 0;
         })
-        .catch(err => console.error("Error al validar puntos:", err));
+        .catch(err => {
+            console.error("Fallo total:", err);
+        });
 }
+
 function aplicarPuntosComoDescuento() {
     // Obtenemos el total de la tabla (sin recargos ni descuentos aún)
     let totalVenta = parseFloat(document.getElementById("total").innerText || 0);
