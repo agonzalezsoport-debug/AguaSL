@@ -2012,9 +2012,8 @@ def debug_promos():
 @app.route("/ventas_ui")
 def ventas_ui():
     cajero_nombre = session.get("nombre_cajero", "admin")
-    print("DEBUG CAJERO_ID:", session.get("cajero_id"))
-    print("DEBUG CAJERO_NOMBRE:", session.get("nombre_cajero"))
-
+    
+    # Conexión local para productos y promos
     con = get_db()
     cur = con.cursor()
 
@@ -2029,24 +2028,35 @@ def ventas_ui():
         WHERE activa=1
     """)
     promos = cur.fetchall()
-
     con.close()
+
+    # ================= CLIENTES (SUPABASE) =================
+    # Traemos los clientes de la nube para tener los puntos reales
+    clientes = []
+    try:
+        cloud_con = get_db_cloud() # Tu función de conexión a Supabase
+        cloud_cur = cloud_con.cursor()
+        # Traemos ID, Nombre y Puntos
+        cloud_cur.execute("SELECT id, nombre, puntos_acumulados FROM usuarios ORDER BY nombre ASC")
+        clientes = cloud_cur.fetchall()
+        cloud_con.close()
+    except Exception as e:
+        print(f"⚠️ Error cargando clientes de nube: {e}")
+        # Opcional: cargar clientes locales si falla la nube
 
     # ================= CARRITO =================
     carrito = session.get("carrito", [])
-
-    subtotal = sum(
-        float(i["precio"]) * int(i["cantidad"])
-        for i in carrito
-    )
+    subtotal = sum(float(i["precio"]) * int(i["cantidad"]) for i in carrito)
 
     return render_template(
         "ventas.html",
         productos=productos,
         promos=promos,
+        clientes=clientes, # <--- IMPORTANTE: Enviamos la lista de clientes
         carrito=carrito,
         total=subtotal
     )
+
 @app.route("/carrito/confirmar", methods=["POST"])
 def carrito_confirmar():
     carrito = session.get("carrito", [])
