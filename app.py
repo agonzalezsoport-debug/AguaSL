@@ -2061,6 +2061,10 @@ def carrito_confirmar():
     cur = con.cursor()
 
     try:
+        # --- CAPTURA DE DATOS (NUEVOS + ANTERIORES) ---
+        cliente_id = request.form.get("cliente_id")
+        puntos_canjeados = float(request.form.get("puntos_canje_dinero") or 0)
+        
         metodo_pago = request.form.get("metodo_pago")
         recargo_porc = float(request.form.get("recargo") or 0)
         descuento_porc = float(request.form.get("descuento") or 0)
@@ -2072,41 +2076,43 @@ def carrito_confirmar():
         venta_id = str(uuid.uuid4())
         fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
+        # --- CÁLCULOS INCLUYENDO PUNTOS ---
         subtotal = sum(float(i["precio"]) * int(i["cantidad"]) for i in carrito)
         recargo_valor = subtotal * (recargo_porc / 100)
         descuento_valor = subtotal * (descuento_porc / 100)
-        total_final = subtotal + recargo_valor - descuento_valor
+        
+        # El total final descuenta el canje de puntos
+        total_final = subtotal + recargo_valor - descuento_valor - puntos_canjeados
+        total_final = max(0, total_final)
 
         # 1. INSERT VENTA LOCAL
         cur.execute("""
             INSERT INTO ventas (id, fecha, total, recargo, descuento, total_final, metodo_pago, cajero, caja_id)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (venta_id, fecha, subtotal, recargo_valor, descuento_valor, total_final, metodo_pago, cajero_nombre, caja_id))
+        """, (venta_id, fecha, subtotal, recargo_valor, (descuento_valor + puntos_canjeados), total_final, metodo_pago, cajero_nombre, caja_id))
 
-        # 2. INSERT ITEMS LOCALES
+        # 2. INSERT ITEMS LOCALES (Respetando lógica de litros y promos)
         items_para_sync = []
         for item in carrito:
             item_id = str(uuid.uuid4())
             cant_vendida = int(item["cantidad"])
             sub_item = float(item["precio"]) * cant_vendida
             
-            # --- CORRECCIÓN DE LITROS ---
             litros_totales_item = 0
             
-            # SÓLO buscamos litros si NO es una promo
             if "promo_" not in str(item["id"]):
                 cur.execute("SELECT litros FROM productos WHERE id = ?", (item["id"],))
                 res_prod = cur.fetchone()
                 
                 if res_prod:
-                    # Manejo robusto: intentamos por nombre de columna, sino por índice 0
                     try:
+                        # Si es un objeto tipo dict por Row o similar
                         litros_unidad = float(res_prod["litros"] or 0)
                     except:
+                        # Si es una tupla simple
                         litros_unidad = float(res_prod[0] or 0)
                     
                     litros_totales_item = litros_unidad * cant_vendida
-            # ----------------------------
 
             cur.execute("""
                 INSERT INTO venta_items (id, venta_id, producto_id, cantidad, litros_total, subtotal)
@@ -2124,14 +2130,38 @@ def carrito_confirmar():
 
         con.commit()
 
-        # ================= SYNC =================
+        # ================= SYNC Y PUNTOS EN NUBE =================
+        
+        # A. Sincronización de Venta (Respetando tu save_offline)
         save_offline("ventas", "insert", {
             "id": venta_id, "fecha": fecha, "total": subtotal,
-            "recargo": recargo_valor, "descuento": descuento_valor,
+            "recargo": recargo_valor, "descuento": (descuento_valor + puntos_canjeados),
             "total_final": total_final, "metodo_pago": metodo_pago, 
             "cajero": cajero_nombre, "caja_id": caja_id
         })
 
+        # B. 🔥 LÓGICA DE PUNTOS SUPABASE (Try independiente para no romper la venta)
+        if cliente_id and cliente_id.strip() != "":
+            try:
+                cloud_con = get_db_cloud()
+                cloud_cur = cloud_con.cursor()
+                
+                # Calculamos el 1% de la compra para sumar
+                puntos_nuevos = total_final * 0.01 
+                
+                # Restamos lo canjeado y sumamos lo ganado hoy
+                cloud_cur.execute("""
+                    UPDATE usuarios 
+                    SET puntos_acumulados = COALESCE(puntos_acumulados, 0) - %s + %s
+                    WHERE id = %s
+                """, (puntos_canjeados, puntos_nuevos, cliente_id))
+                
+                cloud_con.commit()
+                cloud_con.close()
+            except Exception as e_puntos:
+                print(f"⚠️ Error al actualizar puntos en Supabase: {e_puntos}")
+
+        # C. Sincronización de Items y Stock
         for item_s in items_para_sync:
             save_offline("venta_items", "insert", item_s)
             save_offline("productos", "update", {
@@ -2147,6 +2177,7 @@ def carrito_confirmar():
         return f"❌ Error en venta: {e}"
     finally:
         if con: con.close()
+
 
 @app.route("/caja/cerrar", methods=["POST"])
 def cierre_caja():
