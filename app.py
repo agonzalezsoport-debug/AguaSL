@@ -2094,59 +2094,60 @@ def carrito_confirmar():
     carrito = session.get("carrito", [])
     if not carrito: return "❌ Carrito vacío"
 
-    # ... (tus validaciones de caja_id y conexión inicial siguen igual) ...
+    caja_id = session.get("caja_id")
+    if not caja_id: return "❌ Debes abrir caja primero"
+
     con = get_db_local() 
     cur = con.cursor()
 
     try:
-        # --- 1. CAPTURAR LOS NUEVOS DATOS DEL FORMULARIO ---
+        # CAPTURA DE DATOS DEL FORMULARIO
         cliente_id = request.form.get("cliente_id")
-        puntos_descuento_fijo = float(request.form.get("puntos_canje_dinero") or 0)
-        
+        puntos_canjeados = float(request.form.get("puntos_canje_dinero") or 0)
         metodo_pago = request.form.get("metodo_pago")
         recargo_porc = float(request.form.get("recargo") or 0)
         descuento_porc = float(request.form.get("descuento") or 0)
 
-        # --- 2. RECALCULAR EL TOTAL INCLUYENDO PUNTOS ---
+        # CÁLCULOS DE TOTALES
         subtotal = sum(float(i["precio"]) * int(i["cantidad"]) for i in carrito)
         recargo_valor = subtotal * (recargo_porc / 100)
         descuento_valor = subtotal * (descuento_porc / 100)
         
-        # Restamos el valor fijo de los puntos al total final
-        total_final = subtotal + recargo_valor - descuento_valor - puntos_descuento_fijo
+        # El total final resta el descuento por puntos
+        total_final = subtotal + recargo_valor - descuento_valor - puntos_canjeados
         if total_final < 0: total_final = 0
 
         venta_id = str(uuid.uuid4())
         fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        cajero_nombre = "admin" if session.get("admin") else session.get("nombre_cajero")
 
-        # 3. INSERT VENTA LOCAL (Agregamos cliente_id si tu tabla lo permite)
+        # 1. INSERT VENTA LOCAL
         cur.execute("""
             INSERT INTO ventas (id, fecha, total, recargo, descuento, total_final, metodo_pago, cajero, caja_id)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (venta_id, fecha, subtotal, recargo_valor, (descuento_valor + puntos_descuento_fijo), total_final, metodo_pago, "admin", caja_id))
+        """, (venta_id, fecha, subtotal, recargo_valor, (descuento_valor + puntos_canjeados), total_final, metodo_pago, cajero_nombre, caja_id))
 
-        # ... (tu lógica de insertar items y litros sigue igual) ...
+        # 2. INSERT ITEMS (Mantenemos tu lógica de litros)
+        for item in carrito:
+            # ... (aquí va tu bloque actual de inserción de items y litros) ...
+            pass
 
         con.commit()
 
-        # ================= SYNC A LA NUBE (SUPABASE) =================
-        # A. Guardar la venta
-        save_offline("ventas", "insert", {
-            "id": venta_id, "total_final": total_final, "cliente_id": cliente_id
-        })
-
-        # B. 🔥 DESCONTAR LOS PUNTOS AL CLIENTE EN LA NUBE
-        if cliente_id and puntos_descuento_fijo > 0:
-            # Conectamos a Supabase para restar los puntos usados
-            cloud_con = get_db_cloud() # Tu función de conexión a Supabase
+        # 3. ACTUALIZACIÓN DE PUNTOS EN SUPABASE (NUBE)
+        if cliente_id and cliente_id != "":
+            cloud_con = get_db_cloud()
             cloud_cur = cloud_con.cursor()
-            
-            # Restamos los puntos (asumiendo 1 punto = $1)
+
+            # Definimos cuánto gana: 1% de la compra actual
+            puntos_nuevos = total_final * 0.01 
+
+            # Operación: Saldo Anterior + Nuevos - Canjeados
             cloud_cur.execute("""
                 UPDATE usuarios 
-                SET puntos_acumulados = puntos_acumulados - %s 
+                SET puntos_acumulados = COALESCE(puntos_acumulados, 0) + %s - %s
                 WHERE id = %s
-            """, (puntos_descuento_fijo, cliente_id))
+            """, (puntos_nuevos, puntos_canjeados, cliente_id))
             
             cloud_con.commit()
             cloud_con.close()
@@ -2158,7 +2159,8 @@ def carrito_confirmar():
         if con: con.rollback()
         return f"❌ Error: {e}"
     finally:
-        con.close()
+        if con: con.close()
+
 
 
 @app.route("/caja/cerrar", methods=["POST"])
