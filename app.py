@@ -2094,60 +2094,53 @@ def carrito_confirmar():
     carrito = session.get("carrito", [])
     if not carrito: return "❌ Carrito vacío"
 
+    # Captura de datos desde el formulario HTML
+    cliente_id = request.form.get("cliente_id")
+    puntos_canjeados = float(request.form.get("puntos_canje_dinero") or 0)
+    metodo_pago = request.form.get("metodo_pago")
+    recargo_porc = float(request.form.get("recargo") or 0)
+    descuento_porc = float(request.form.get("descuento") or 0)
     caja_id = session.get("caja_id")
-    if not caja_id: return "❌ Debes abrir caja primero"
 
     con = get_db_local() 
     cur = con.cursor()
 
     try:
-        # CAPTURA DE DATOS DEL FORMULARIO
-        cliente_id = request.form.get("cliente_id")
-        puntos_canjeados = float(request.form.get("puntos_canje_dinero") or 0)
-        metodo_pago = request.form.get("metodo_pago")
-        recargo_porc = float(request.form.get("recargo") or 0)
-        descuento_porc = float(request.form.get("descuento") or 0)
-
-        # CÁLCULOS DE TOTALES
+        # Cálculos de dinero
         subtotal = sum(float(i["precio"]) * int(i["cantidad"]) for i in carrito)
         recargo_valor = subtotal * (recargo_porc / 100)
         descuento_valor = subtotal * (descuento_porc / 100)
         
-        # El total final resta el descuento por puntos
+        # RESTAR PUNTOS DEL TOTAL
         total_final = subtotal + recargo_valor - descuento_valor - puntos_canjeados
-        if total_final < 0: total_final = 0
+        total_final = max(0, total_final)
 
         venta_id = str(uuid.uuid4())
         fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        cajero_nombre = "admin" if session.get("admin") else session.get("nombre_cajero")
 
-        # 1. INSERT VENTA LOCAL
+        # 1. Guardar venta localmente
         cur.execute("""
             INSERT INTO ventas (id, fecha, total, recargo, descuento, total_final, metodo_pago, cajero, caja_id)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (venta_id, fecha, subtotal, recargo_valor, (descuento_valor + puntos_canjeados), total_final, metodo_pago, cajero_nombre, caja_id))
-
-        # 2. INSERT ITEMS (Mantenemos tu lógica de litros)
-        for item in carrito:
-            # ... (aquí va tu bloque actual de inserción de items y litros) ...
-            pass
-
+        """, (venta_id, fecha, subtotal, recargo_valor, (descuento_valor + puntos_canjeados), total_final, metodo_pago, "admin", caja_id))
+        
+        # ... (aquí sigue tu código de insertar items) ...
         con.commit()
 
-        # 3. ACTUALIZACIÓN DE PUNTOS EN SUPABASE (NUBE)
-        if cliente_id and cliente_id != "":
-            cloud_con = get_db_cloud()
+        # 2. IMPACTAR PUNTOS EN SUPABASE (SUMA Y RESTA)
+        if cliente_id and cliente_id.strip() != "":
+            cloud_con = get_db_cloud() # Tu conexión a la nube
             cloud_cur = cloud_con.cursor()
 
-            # Definimos cuánto gana: 1% de la compra actual
-            puntos_nuevos = total_final * 0.01 
+            # Calculamos puntos nuevos: 1% de la compra actual
+            puntos_ganados = total_final * 0.01 
 
-            # Operación: Saldo Anterior + Nuevos - Canjeados
+            # Restamos lo canjeado y sumamos lo nuevo en un solo paso
             cloud_cur.execute("""
                 UPDATE usuarios 
-                SET puntos_acumulados = COALESCE(puntos_acumulados, 0) + %s - %s
+                SET puntos_acumulados = COALESCE(puntos_acumulados, 0) - %s + %s
                 WHERE id = %s
-            """, (puntos_nuevos, puntos_canjeados, cliente_id))
+            """, (puntos_canjeados, puntos_ganados, cliente_id))
             
             cloud_con.commit()
             cloud_con.close()
@@ -2157,10 +2150,10 @@ def carrito_confirmar():
 
     except Exception as e:
         if con: con.rollback()
+        print(f"ERROR: {e}")
         return f"❌ Error: {e}"
     finally:
-        if con: con.close()
-
+        con.close()
 
 
 @app.route("/caja/cerrar", methods=["POST"])
