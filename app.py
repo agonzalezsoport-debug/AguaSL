@@ -443,6 +443,36 @@ def count_pedidos():
 def vaciar_carrito():
     session.pop("carrito_cliente", None)
     return redirect("/tienda")
+@app.route("/api/cliente/validar_puntos/<int:cliente_id>")
+def validar_puntos(cliente_id):
+    try:
+        # 1. Conectamos a Supabase
+        con = get_db_cloud()
+        cur = con.cursor()
+
+        # 2. Consultamos los puntos del cliente
+        cur.execute("""
+            SELECT COALESCE(puntos_acumulados, 0) 
+            FROM usuarios 
+            WHERE id = %s
+        """, (cliente_id,))
+        
+        resultado = cur.fetchone()
+        con.close()
+
+        # Si el cursor devuelve una tupla, extraemos el primer valor
+        puntos = resultado[0] if resultado else 0
+
+        # 3. Retornamos los datos que el JavaScript está esperando
+        return jsonify({
+            "puntos": puntos,
+            "descuento_disponible": puntos  # Aquí 1 punto = $1
+        })
+
+    except Exception as e:
+        print(f"❌ Error en API de puntos: {e}")
+        return jsonify({"puntos": 0, "descuento_disponible": 0}), 500
+
 
 @app.route("/")
 def index():
