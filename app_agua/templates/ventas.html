@@ -584,128 +584,85 @@ function agregarManual() {
 }
 
 function calcularTotal() {
+    let totalBase = parseFloat(document.getElementById("total").innerText || 0);
+    let metodo = document.getElementById("metodo_pago").value;
+    
+    // Capturar valores de los inputs (porcentaje)
+    let recargoPorc = parseFloat(document.getElementById("recargo").value || 0);
+    let descuentoPorc = parseFloat(document.getElementById("descuento").value || 0);
+    
+    // Capturar descuento por PUNTOS (dinero fijo)
+    let puntosDinero = parseFloat(document.getElementById("puntos_canje_dinero").value || 0);
 
-    let metodo =
-        document.getElementById("metodo_pago").value;
-
-    let recargoBox =
-        document.getElementById("recargoBox");
-
-    let total = parseFloat(
-        document.getElementById("total").innerText || 0
-    );
-
-    let recargo = parseFloat(
-        document.getElementById("recargo").value || 0
-    );
-
-    let descuento = parseFloat(
-        document.getElementById("descuento").value || 0
-    );
-
-    let puntos = parseFloat(
-        document.getElementById("puntos_canje_dinero").value || 0
-    );
-
-    // Mostrar recargo
-    if (
-        metodo === "tarjeta" ||
-        metodo === "transferencia" ||
-        metodo === "qr"
-    ) {
-
+    // Mostrar/Ocultar caja de recargo según método
+    let recargoBox = document.getElementById("recargoBox");
+    if (metodo === "tarjeta" || metodo === "transferencia" || metodo === "qr") {
         recargoBox.style.display = "block";
-
     } else {
-
         recargoBox.style.display = "none";
-
-        recargo = 0;
+        recargoPorc = 0;
     }
 
-    // Total con recargo
-    let totalConRecargo =
-        total + (total * recargo / 100);
+    // Lógica de cálculo
+    let conRecargo = totalBase + (totalBase * (recargoPorc / 100));
+    let menosDescuentoFijo = conRecargo - (conRecargo * (descuentoPorc / 100));
+    
+    // RESTAR LOS PUNTOS AL FINAL
+    let totalFinal = menosDescuentoFijo - puntosDinero;
 
-    // Descuento %
-    let descuentoNormal =
-        totalConRecargo * descuento / 100;
+    // Evitar totales negativos
+    if (totalFinal < 0) totalFinal = 0;
 
-    // Total final
-    let totalFinal =
-        totalConRecargo
-        - descuentoNormal
-        - puntos;
-
-    if (totalFinal < 0) {
-        totalFinal = 0;
-    }
-
-    document.getElementById("totalFinal").innerText =
-        totalFinal.toFixed(2);
+    // Mostrar en pantalla
+    document.getElementById("totalFinal").innerText = totalFinal.toFixed(2);
 }
-
 function cargarPuntosCliente() {
+    let id = document.getElementById("cliente_id").value;
 
-    let id =
-        document.getElementById("cliente_id").value;
-
+    // Si no hay cliente seleccionado (Consumidor Final)
     if (!id) {
-
-        document.getElementById("seccion_puntos").style.display =
-            "none";
-
-        document.getElementById("puntos_canje_dinero").value =
-            0;
-
-        calcularTotal();
-
+        document.getElementById("seccion_puntos").style.display = "none";
+        document.getElementById("puntos_canje_dinero").value = 0;
+        calcularTotal(); // Recalcula para quitar descuentos previos
         return;
     }
 
+    // Petición a la API
     fetch(`/api/cliente/validar_puntos/${id}`)
-    .then(res => res.json())
-    .then(data => {
-
-        document.getElementById("seccion_puntos").style.display =
-            "block";
-
-        document.getElementById("puntos_cliente").innerText =
-            data.puntos || 0;
-
-        document.getElementById("equiv_pesos").innerText =
-            data.descuento_disponible || 0;
-
-        window.puntosDisponibles =
-            data.descuento_disponible || 0;
-    });
+        .then(res => res.json())
+        .then(data => {
+            // Mostrar el panel azul
+            document.getElementById("seccion_puntos").style.display = "block";
+            
+            // Actualizar textos en el panel
+            document.getElementById("puntos_cliente").innerText = data.puntos || 0;
+            document.getElementById("equiv_pesos").innerText = data.descuento_disponible || 0;
+            
+            // Guardar en variable global para la función de aplicar
+            window.puntosDisponibles = parseFloat(data.descuento_disponible) || 0;
+        })
+        .catch(err => console.error("Error al validar puntos:", err));
 }
-
 function aplicarPuntosComoDescuento() {
+    // Obtenemos el total de la tabla (sin recargos ni descuentos aún)
+    let totalVenta = parseFloat(document.getElementById("total").innerText || 0);
+    let disponible = parseFloat(window.puntosDisponibles || 0);
 
-    let total = parseFloat(
-        document.getElementById("total").innerText || 0
-    );
+    if (disponible <= 0) {
+        alert("El cliente no tiene puntos para aplicar.");
+        return;
+    }
 
-    let puntos = parseFloat(
-        window.puntosDisponibles || 0
-    );
+    // El descuento no puede ser mayor al total de la venta
+    let descuentoAAplicar = (disponible > totalVenta) ? totalVenta : disponible;
 
-    let descuentoAplicado =
-        puntos > total
-        ? total
-        : puntos;
+    // Guardar en el input oculto para que viaje al servidor
+    document.getElementById("puntos_canje_dinero").value = descuentoAAplicar;
 
-    document.getElementById("puntos_canje_dinero").value =
-        descuentoAplicado;
-
+    // Actualizar el total final visualmente
     calcularTotal();
 
-    alert(
-        "⭐ Se aplicaron $" +
-        descuentoAplicado +
-        " en descuentos"
-    );
+    alert("⭐ Se han aplicado $" + descuentoAAplicar.toFixed(2) + " de descuento por puntos.");
 }
 
 document.addEventListener("DOMContentLoaded", function () {
