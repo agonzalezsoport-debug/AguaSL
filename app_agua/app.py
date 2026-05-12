@@ -2092,103 +2092,69 @@ def ventas_ui():
 @app.route("/carrito/confirmar", methods=["POST"])
 def carrito_confirmar():
     carrito = session.get("carrito", [])
-    if not carrito:
-        return "❌ Carrito vacío"
+    if not carrito: return "❌ Carrito vacío"
 
+    # Captura de datos desde el formulario HTML
+    cliente_id = request.form.get("cliente_id")
+    puntos_canjeados = float(request.form.get("puntos_canje_dinero") or 0)
+    metodo_pago = request.form.get("metodo_pago")
+    recargo_porc = float(request.form.get("recargo") or 0)
+    descuento_porc = float(request.form.get("descuento") or 0)
     caja_id = session.get("caja_id")
-    if not caja_id:
-        return "❌ Debes abrir caja primero"
 
     con = get_db_local() 
     cur = con.cursor()
 
     try:
-        metodo_pago = request.form.get("metodo_pago")
-        recargo_porc = float(request.form.get("recargo") or 0)
-        descuento_porc = float(request.form.get("descuento") or 0)
-
-        if not metodo_pago:
-            return "❌ Selecciona método de pago"
-
-        cajero_nombre = "admin" if session.get("admin") else session.get("nombre_cajero")
-        venta_id = str(uuid.uuid4())
-        fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
+        # Cálculos de dinero
         subtotal = sum(float(i["precio"]) * int(i["cantidad"]) for i in carrito)
         recargo_valor = subtotal * (recargo_porc / 100)
         descuento_valor = subtotal * (descuento_porc / 100)
-        total_final = subtotal + recargo_valor - descuento_valor
+        
+        # RESTAR PUNTOS DEL TOTAL
+        total_final = subtotal + recargo_valor - descuento_valor - puntos_canjeados
+        total_final = max(0, total_final)
 
-        # 1. INSERT VENTA LOCAL
+        venta_id = str(uuid.uuid4())
+        fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        # 1. Guardar venta localmente
         cur.execute("""
             INSERT INTO ventas (id, fecha, total, recargo, descuento, total_final, metodo_pago, cajero, caja_id)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (venta_id, fecha, subtotal, recargo_valor, descuento_valor, total_final, metodo_pago, cajero_nombre, caja_id))
-
-        # 2. INSERT ITEMS LOCALES
-        items_para_sync = []
-        for item in carrito:
-            item_id = str(uuid.uuid4())
-            cant_vendida = int(item["cantidad"])
-            sub_item = float(item["precio"]) * cant_vendida
-            
-            # --- CORRECCIÓN DE LITROS ---
-            litros_totales_item = 0
-            
-            # SÓLO buscamos litros si NO es una promo
-            if "promo_" not in str(item["id"]):
-                cur.execute("SELECT litros FROM productos WHERE id = ?", (item["id"],))
-                res_prod = cur.fetchone()
-                
-                if res_prod:
-                    # Manejo robusto: intentamos por nombre de columna, sino por índice 0
-                    try:
-                        litros_unidad = float(res_prod["litros"] or 0)
-                    except:
-                        litros_unidad = float(res_prod[0] or 0)
-                    
-                    litros_totales_item = litros_unidad * cant_vendida
-            # ----------------------------
-
-            cur.execute("""
-                INSERT INTO venta_items (id, venta_id, producto_id, cantidad, litros_total, subtotal)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (item_id, venta_id, item["id"], cant_vendida, litros_totales_item, sub_item))
-            
-            items_para_sync.append({
-                "id": item_id, 
-                "venta_id": venta_id, 
-                "producto_id": item["id"],
-                "cantidad": cant_vendida, 
-                "litros_total": litros_totales_item,
-                "subtotal": sub_item
-            })
-
+        """, (venta_id, fecha, subtotal, recargo_valor, (descuento_valor + puntos_canjeados), total_final, metodo_pago, "admin", caja_id))
+        
+        # ... (aquí sigue tu código de insertar items) ...
         con.commit()
 
-        # ================= SYNC =================
-        save_offline("ventas", "insert", {
-            "id": venta_id, "fecha": fecha, "total": subtotal,
-            "recargo": recargo_valor, "descuento": descuento_valor,
-            "total_final": total_final, "metodo_pago": metodo_pago, 
-            "cajero": cajero_nombre, "caja_id": caja_id
-        })
+        # 2. IMPACTAR PUNTOS EN SUPABASE (SUMA Y RESTA)
+        if cliente_id and cliente_id.strip() != "":
+            cloud_con = get_db_cloud() # Tu conexión a la nube
+            cloud_cur = cloud_con.cursor()
 
-        for item_s in items_para_sync:
-            save_offline("venta_items", "insert", item_s)
-            save_offline("productos", "update", {
-                "id": item_s["producto_id"],
-                "stock_restar": item_s["cantidad"] 
-            })
+            # Calculamos puntos nuevos: 1% de la compra actual
+            puntos_ganados = total_final * 0.01 
+
+            # Restamos lo canjeado y sumamos lo nuevo en un solo paso
+            cloud_cur.execute("""
+                UPDATE usuarios 
+                SET puntos_acumulados = COALESCE(puntos_acumulados, 0) - %s + %s
+                WHERE id = %s
+            """, (puntos_canjeados, puntos_ganados, cliente_id))
+            
+            cloud_con.commit()
+            cloud_con.close()
 
         session["carrito"] = []
         return redirect("/ventas_ui")
 
     except Exception as e:
         if con: con.rollback()
-        return f"❌ Error en venta: {e}"
+        print(f"ERROR: {e}")
+        return f"❌ Error: {e}"
     finally:
-        if con: con.close()
+        con.close()
+
 
 @app.route("/caja/cerrar", methods=["POST"])
 def cierre_caja():
