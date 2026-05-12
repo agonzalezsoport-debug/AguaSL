@@ -153,29 +153,20 @@
             <b>👤 Cliente</b>
         </label>
 
-        <select name="cliente_id"
-                id="cliente_id"
-                onchange="cargarPuntosCliente()"
-                style="
-                    width:100%;
-                    padding:12px;
-                    border-radius:8px;
-                    border:1px solid #ccc;
-                    margin-top:5px;
-                ">
-
-            <option value="">
-                Consumidor Final
-            </option>
-
+        <select name="cliente_id" id="cliente_id" onchange="cargarPuntosCliente()" 
+                style="width:100%; padding:12px; border-radius:8px; border:1px solid #ccc; margin-top:5px;">
+            
+            <option value="">Consumidor Final</option>
+        
             {% for cli in clientes %}
-            <option value="{{ cli.id }}">
-                {{ cli.nombre }}
-                - ⭐ {{ cli.puntos_acumulados or 0 }}
+            <option value="{{ cli['id'] }}">
+                {{ cli['nombre'] }}
+                - ⭐ {{ cli['puntos_acumulados'] or 0 }}
             </option>
             {% endfor %}
-
+        
         </select>
+
 
     </div>
 
