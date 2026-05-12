@@ -419,6 +419,18 @@ def ver_carrito():
     carrito = session.get("carrito_cliente", [])
     total = sum(item['precio'] * item['cantidad'] for item in carrito)
     return render_template("carrito.html", carrito=carrito, total=total)
+@app.route("/carrito/eliminar/<int:index>")
+def carrito_eliminar(index):
+    carrito = session.get("carrito", [])
+    
+    # Verificamos que el índice exista para que no explote
+    if 0 <= index < len(carrito):
+        item_eliminado = carrito.pop(index)
+        session["carrito"] = carrito
+        session.modified = True
+        print(f"🗑️ Ítem eliminado del carrito: {item_eliminado['desc']}")
+    
+    return redirect("/ventas_ui")
 @app.route('/api/pedidos/count')
 def count_pedidos():
     con = None
