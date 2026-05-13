@@ -449,6 +449,52 @@ def count_pedidos():
         return {"cantidad": 0}
     finally:
         if con: con.close()
+@app.route('/api/obtener_productos_stock', methods=['GET'])
+def api_obtener_productos_stock():
+    try:
+        with db_lock:
+            con = get_db()
+            cur = con.cursor()
+            # Seleccionamos explícitamente el código de barras/interno
+            cur.execute("SELECT id, codigo, descripcion, precio, stock FROM productos WHERE stock > 0 ORDER BY descripcion ASC")
+            filas = cur.fetchall()
+            con.close()
+        
+        lista_productos = []
+        archivos_en_disco = os.listdir(UPLOAD_FOLDER) if os.path.exists(UPLOAD_FOLDER) else []
+        
+        for fila in filas:
+            datos_fila = dict(fila)
+            id_prod = str(datos_fila["id"])
+            codigo_prod = str(datos_fila["codigo"]) if datos_fila["codigo"] else ""
+            
+            nombre_imagen = ""
+            for archivo in archivos_en_disco:
+                archivo_min = archivo.lower()
+                if archivo_min.startswith(id_prod.lower()) or (codigo_prod and archivo_min.startswith(codigo_prod.lower())):
+                    nombre_imagen = archivo
+                    break
+
+            lista_productos.append({
+                "id": id_prod,
+                "codigo": codigo_prod, # 🔥 ENVIAMOS EL CÓDIGO DE BARRAS REAL
+                "nombre": str(datos_fila["descripcion"]),
+                "precio": float(datos_fila["precio"]) if datos_fila["precio"] is not None else 0.0,
+                "stock": int(datos_fila["stock"]) if datos_fila["stock"] is not None else 0,
+                "imagen": nombre_imagen 
+            })
+            
+        data_json = json.dumps(lista_productos, ensure_ascii=False)
+        return Response(data_json, mimetype='application/json', status=200)
+        
+    except Exception as e:
+        print(f"❌ Error crítico en API de ofertas: {e}")
+        error_json = json.dumps({"error": str(e)}, ensure_ascii=False)
+        return Response(error_json, mimetype='application/json', status=500)
+@app.route('/visor_publico_ofertas')
+def visor_publico_ofertas():
+    # Renderiza de forma segura la nueva plantilla aislada
+    return render_template("visor_publico.html")            
 
 # --- VACIAR CARRITO ---
 @app.route("/carrito/vaciar")
