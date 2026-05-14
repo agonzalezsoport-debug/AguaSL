@@ -25,14 +25,15 @@
             </div>
         {% endif %}
 
-        <form method="POST" class="login-form">
+        <!-- Agregamos un ID para controlar el envío con JavaScript -->
+        <form method="POST" action="/login_cajero" class="login-form" id="formLoginCajero">
 
-            <input type="text" name="nombre" placeholder="Usuario" required>
+            <input type="text" name="nombre" id="inputUsuario" placeholder="Usuario" required>
 
             <input type="password" name="password" placeholder="Contraseña" required>
 
-            <!-- 📌 CAMPO INVISIBLE MANDATORIO PARA INTERCEPTAR CONFIRMACIONES -->
-            <input type="hidden" name="confirmado_reingreso" value="false">
+            <!-- Campo oculto mandatorio para enviar la decisión al backend -->
+            <input type="hidden" name="confirmado_reingreso" id="confirmadoReingreso" value="false">
 
             <button type="submit" class="btn">
                 🔐 Ingresar
@@ -49,6 +50,47 @@
     </div>
 
 </div>
+
+<script>
+document.getElementById("formLoginCajero").addEventListener("submit", function(e) {
+    // Si la bandera ya está en "true", permitimos que el formulario viaje normalmente
+    if (document.getElementById("confirmadoReingreso").value === "true") {
+        return;
+    }
+
+    e.preventDefault(); // Frenamos el envío tradicional para verificar el estado de la caja primero
+    const form = this;
+    const usuario = document.getElementById("inputUsuario").value;
+
+    // Consultamos de fondo a nuestra API si el cajero tiene un turno activo en Render
+    fetch(`/api/verificar_caja_abierta?usuario=${encodeURIComponent(usuario)}`)
+    .then(res => res.json())
+    .then(data => {
+        if (data.abierta) {
+            // El navegador abre el cuadro nativo sin alterar el árbol DOM de la página
+            let respuesta = confirm(`⚠️ TURNOS SIMULTÁNEOS DETECTADOS:\n\nYa figura una caja ABIERTA en el sistema bajo el usuario '${usuario}'.\n• Apertura: ${data.fecha_apertura}\n\n¿Deseás ingresar de todas formas y continuar vendiendo en esa misma caja?\n\n[Aceptar] = Entrar directo a realizar ventas.\n[Cancelar] = Volver atrás para cambiar de usuario.`);
+            
+            if (respuesta) {
+                // Si el cajero acepta, cambiamos la bandera oculta y enviamos el formulario real de la pantalla
+                document.getElementById("confirmadoReingreso").value = "true";
+                form.submit();
+            } else {
+                // Si cancela, limpiamos el formulario de forma nativa para que use otra cuenta
+                form.reset();
+            }
+        } else {
+            // Si no tiene cajas abiertas previas, viaja directo al inicio de sesión normal
+            document.getElementById("confirmadoReingreso").value = "true";
+            form.submit();
+        }
+    })
+    .catch(err => {
+        // Blindaje por si falla la red: envía el formulario por el flujo clásico
+        document.getElementById("confirmadoReingreso").value = "true";
+        form.submit();
+    });
+});
+</script>
 
 </body>
 </html>
