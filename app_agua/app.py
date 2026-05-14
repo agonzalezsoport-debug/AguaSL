@@ -2289,48 +2289,11 @@ def carrito_confirmar():
         return "❌ Carrito vacío"
 
     caja_id = session.get("caja_id")
-    nombre_cajero = session.get("nombre_cajero")
+    if not caja_id:
+        return "❌ Debes abrir caja primero"
 
-    if not (session.get("admin") or session.get("cajero_id")):
-        return redirect("/")
-
-    # Conexión a la base de datos (PostgreSQL en Render)
     con = get_db_local() 
     cur = con.cursor()
-
-    # ================= 🚨 BLOQUE DE RESCATE POSICIONAL PARA RENDER =================
-    # Si caja_id viene como tupla de Postgres o está corrupto, lo re-validamos por base de datos
-    if not caja_id or isinstance(caja_id, (list, tuple)) or str(caja_id).startswith("("):
-        if nombre_cajero:
-            # Usamos %s para los marcadores de Postgres en Render
-            cur.execute("""
-                SELECT id FROM caja 
-                WHERE TRIM(UPPER(cajero)) = TRIM(UPPER(%s)) AND TRIM(UPPER(estado)) = 'ABIERTA' 
-                LIMIT 1
-            """, (nombre_cajero,))
-            caja_rescate = cur.fetchone()
-            
-            if caja_rescate:
-                # Extracción por índice 0 pura para Tuplas de Postgres en la nube
-                if isinstance(caja_rescate, (list, tuple)):
-                    caja_id = str(caja_rescate[0])
-                else:
-                    caja_id = str(caja_rescate["id"])
-                
-                # Guardamos el ID limpio en la sesión para estabilizar el POS
-                session["caja_id"] = caja_id
-                session.modified = True
-            else:
-                con.close()
-                return "❌ Debes abrir caja primero (No se encontró turno activo para tu usuario)"
-        else:
-            con.close()
-            return "❌ Debes abrir caja primero"
-            
-    if not caja_id:
-        con.close()
-        return "❌ Debes abrir caja primero"
-    # =========================================================================
 
     try:
         # --- CAPTURA DE DATOS (NUEVOS + ANTERIORES) ---
@@ -2354,16 +2317,16 @@ def carrito_confirmar():
         descuento_valor = subtotal * (descuento_porc / 100)
         
         # El total final descuenta el canje de puntos
-        total_final = subtotal + recargo_valor - discount_valor - puntos_canjeados if 'discount_valor' in locals() else subtotal + recargo_valor - descuento_valor - puntos_canjeados
+        total_final = subtotal + recargo_valor - descuento_valor - puntos_canjeados
         total_final = max(0, total_final)
 
-        # 1. INSERT VENTA LOCAL (Marcadores corregidos a %s para PostgreSQL en Render)
+        # 1. INSERT VENTA LOCAL
         cur.execute("""
             INSERT INTO ventas (id, fecha, total, recargo, descuento, total_final, metodo_pago, cajero, caja_id)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (venta_id, fecha, subtotal, recargo_valor, (descuento_valor + puntos_canjeados), total_final, metodo_pago, cajero_nombre, caja_id))
 
-        # 2. INSERT ITEMS LOCALES (Respetando lógica de litros y promos con marcadores %s)
+        # 2. INSERT ITEMS LOCALES (Respetando lógica de litros y promos)
         items_para_sync = []
         for item in carrito:
             item_id = str(uuid.uuid4())
@@ -2373,7 +2336,7 @@ def carrito_confirmar():
             litros_totales_item = 0
             
             if "promo_" not in str(item["id"]):
-                cur.execute("SELECT litros FROM productos WHERE id = %s", (item["id"],))
+                cur.execute("SELECT litros FROM productos WHERE id = ?", (item["id"],))
                 res_prod = cur.fetchone()
                 
                 if res_prod:
@@ -2381,14 +2344,14 @@ def carrito_confirmar():
                         # Si es un objeto tipo dict por Row o similar
                         litros_unidad = float(res_prod["litros"] or 0)
                     except:
-                        # Si es una tupla simple (Postgres en Render)
+                        # Si es una tupla simple
                         litros_unidad = float(res_prod[0] or 0)
                     
                     litros_totales_item = litros_unidad * cant_vendida
 
             cur.execute("""
                 INSERT INTO venta_items (id, venta_id, producto_id, cantidad, litros_total, subtotal)
-                VALUES (%s, %s, %s, %s, %s, %s)
+                VALUES (?, ?, ?, ?, ?, ?)
             """, (item_id, venta_id, item["id"], cant_vendida, litros_totales_item, sub_item))
             
             items_para_sync.append({
@@ -2400,16 +2363,11 @@ def carrito_confirmar():
                 "subtotal": sub_item
             })
 
-        # 3. ACTUALIZACIÓN DIRECTA DE STOCK EN POSTGRESQL
-        for item in carrito:
-            if "promo_" not in str(item["id"]):
-                cur.execute("UPDATE productos SET stock = stock - %s WHERE id = %s", (int(item["cantidad"]), item["id"]))
-
         con.commit()
 
         # ================= SYNC Y PUNTOS EN NUBE =================
         
-        # A. Sincronización de Venta (Respetando tu save_offline original)
+        # A. Sincronización de Venta (Respetando tu save_offline)
         save_offline("ventas", "insert", {
             "id": venta_id, "fecha": fecha, "total": subtotal,
             "recargo": recargo_valor, "descuento": (descuento_valor + puntos_canjeados),
@@ -2438,7 +2396,7 @@ def carrito_confirmar():
             except Exception as e_puntos:
                 print(f"⚠️ Error al actualizar puntos en Supabase: {e_puntos}")
 
-        # C. Sincronización de Items y Stock (Respetando tu save_offline original)
+        # C. Sincronización de Items y Stock
         for item_s in items_para_sync:
             save_offline("venta_items", "insert", item_s)
             save_offline("productos", "update", {
@@ -2450,10 +2408,10 @@ def carrito_confirmar():
         return redirect("/ventas_ui")
 
     except Exception as e:
-        con.rollback()
+        if con: con.rollback()
         return f"❌ Error en venta: {e}"
     finally:
-        con.close()
+        if con: con.close()
 
 @app.route("/caja/cerrar", methods=["POST"])
 def cierre_caja():
