@@ -1903,10 +1903,10 @@ def caja_estado():
 
 @app.route("/carrito/agregar", methods=["POST"])
 def carrito_agregar():
-    if "carrito" not in session:
+    # 1. Inicialización e inmunidad de persistencia en la cookie de Flask
+    if "carrito" not in session or session["carrito"] is None:
         session["carrito"] = []
 
-    # Limpiamos el código y cantidad
     codigo_original = (request.form.get("codigo") or "").strip()
     codigo_upper = codigo_original.upper()
     cantidad_raw = request.form.get("cantidad")
@@ -1925,11 +1925,12 @@ def carrito_agregar():
     con = get_db()
     cur = con.cursor()
 
+    # Copia local segura para forzar el guardado correcto de la sesión
+    carrito_temporal = list(session["carrito"])
+
     # ================= LÓGICA DE PROMOS =================
-    # Verificamos si es promo por prefijo o intentando buscar el ID directamente
     if codigo_upper.startswith("PROMO-"):
-        # Extraemos el ID quitando el prefijo
-        promo_id = codigo_original[6:] # Usamos el original para no perder minúsculas del UUID
+        promo_id = codigo_original[6:]
         
         ejecutar(cur, con, """
             SELECT id, nombre, descripcion, precio
@@ -1945,19 +1946,19 @@ def carrito_agregar():
 
         prod_id, nombre, desc, precio = promo
 
-        session["carrito"].append({
+        carrito_temporal.append({
             "id": "promo_" + str(prod_id),
             "desc": "🎁 " + nombre,
             "precio": float(precio or 0),
             "cantidad": cantidad
         })
 
+        session["carrito"] = carrito_temporal
         session.modified = True
         con.close()
         return redirect("/ventas_ui")
 
     # ================= LÓGICA DE PRODUCTOS =================
-    # Si no empezó con PROMO-, lo buscamos como producto normal
     ejecutar(cur, con, """
         SELECT id, descripcion, precio, stock
         FROM productos
@@ -1972,17 +1973,37 @@ def carrito_agregar():
 
     prod_id, desc, precio, stock = prod
 
-    if stock < cantidad:
-        con.close()
-        return f"❌ Stock insuficiente (Disponible: {stock})"
+    # ================= NUEVO: CONTROL ACUMULATIVO DE STOCK =================
+    # 1. Contamos cuántas unidades de este producto específico ya están en el carrito
+    unidades_en_carrito = 0
+    for item in carrito_temporal:
+        if item.get("id") == prod_id:
+            unidades_en_carrito += int(item.get("cantidad") or 0)
 
-    session["carrito"].append({
+    # 2. Calculamos el stock remanente real en góndola
+    stock_disponible_real = stock - unidades_en_carrito
+
+    # 3. Validación de stock absoluto a cero
+    if stock_disponible_real <= 0:
+        con.close()
+        return f"❌ No hay más stock disponible. Las {stock} unidades ya están en el carrito."
+
+    # 4. Validación si el nuevo ingreso supera el disponible calculado
+    if stock_disponible_real < cantidad:
+        con.close()
+        return f"❌ Stock insuficiente. Solo quedan {stock_disponible_real} disponibles (Ya tenés {unidades_en_carrito} en el carrito)."
+    # ========================================================================
+
+    # Insertamos el elemento en nuestra lista temporal
+    carrito_temporal.append({
         "id": prod_id,
         "desc": desc,
         "precio": float(precio or 0),
         "cantidad": cantidad
     })
 
+    # Forzamos la sobreescritura limpia en la sesión de producción
+    session["carrito"] = carrito_temporal
     session.modified = True
     con.close()
     return redirect("/ventas_ui")
