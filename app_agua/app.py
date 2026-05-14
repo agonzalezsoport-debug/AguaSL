@@ -2592,76 +2592,27 @@ def login_cajero():
         nombre = request.form.get("nombre")
         password = request.form.get("password")
         
-        # Leemos el valor del campo oculto que envía el archivo login_cajero.html
-        confirmado = request.form.get("confirmado_reingreso") == "true"
-        
         con = get_db()
         cur = con.cursor()
         
-        # 1. Traemos al cajero de forma posicional nativa para Render
+        # Validamos las credenciales fijas con tus índices posicionales
         ejecutar(cur, con, "SELECT * FROM cajeros WHERE usuario = %s AND password = %s", (nombre, password))
         cajero = cur.fetchone()
 
         if cajero:
-            # 2. Si las credenciales son correctas, verificamos si ya posee una caja abierta
-            if not confirmado:
-                ejecutar(cur, con, """
-                    SELECT id, fecha_apertura 
-                    FROM caja 
-                    WHERE TRIM(UPPER(cajero)) = TRIM(UPPER(%s)) AND TRIM(UPPER(estado)) = 'ABIERTA'
-                    LIMIT 1
-                """, (nombre,))
-                caja_abierta = cur.fetchone()
-                
-                # Si Render encuentra una caja activa, frena el flujo y le pregunta al usuario
-                if caja_abierta:
-                    con.close()
-                    fecha_ap = caja_abierta[1]  # Índice de fecha_apertura en tu tupla de Postgres
-                    
-                    # El script genera un formulario dinámico que reenvía los datos agregando la bandera true
-                    return f"""
-                    <script>
-                        let respuesta = confirm("⚠️ AVISO DE SESIÓN ACTIVA:\\n\\nYa tenés una caja ABIERTA en el sistema bajo el usuario '{nombre}'.\\n• Apertura: {fecha_ap}\\n\\n¿Deseás entrar y continuar trabajando en esa misma caja?\\n\\n[Aceptar] = Entrar directo a realizar ventas.\\n[Cancelar] = Volver para ingresar con otro usuario.");
-                        
-                        if (respuesta) {{
-                            let form = document.createElement('form');
-                            form.method = 'POST';
-                            form.action = '/login_cajero';
-                            
-                            let inNombre = document.createElement('input');
-                            inNombre.type = 'hidden'; inNombre.name = 'nombre'; inNombre.value = '{nombre}';
-                            
-                            let inPass = document.createElement('input');
-                            inPass.type = 'hidden'; inPass.name = 'password'; inPass.value = '{password}';
-                            
-                            let inConf = document.createElement('input');
-                            inConf.type = 'hidden'; inConf.name = 'confirmado_reingreso'; inConf.value = 'true';
-                            
-                            form.appendChild(inNombre);
-                            form.appendChild(inPass);
-                            form.appendChild(inConf);
-                            document.body.appendChild(form);
-                            form.submit();
-                        }} else {{
-                            // CAMBIO SOLICITADO: Si pone cancelar, se lo mantiene estrictamente en la vista de login
-                            window.location.href = "/login_cajero.html";
-                        }}
-                    </script>
-                    """
-
-            # 3. REUTILIZACIÓN AUTOMÁTICA DEL ID DE LA CAJA EXISTENTE
+            # Buscamos si existe la caja abierta para recuperar su ID exacto
             ejecutar(cur, con, "SELECT id FROM caja WHERE TRIM(UPPER(cajero)) = TRIM(UPPER(%s)) AND TRIM(UPPER(estado)) = 'ABIERTA' LIMIT 1", (nombre,))
             caja_existente = cur.fetchone()
             caja_id_detectado = caja_existente[0] if caja_existente else None
             con.close()
 
-            # 4. ARMADO DE LA SESIÓN CON TUS ÍNDICES POSICIONALES EXACTOS
+            # Estructuración limpia de cookies en Render
             session.clear()
             session["cajero_id"] = cajero[0]
             session["nombre_cajero"] = cajero[1]
-            session["caja_id"] = caja_id_detectado  # Mantiene el ID original si venía de un reingreso
+            session["caja_id"] = caja_id_detectado  # Reutiliza el ID transparente si ya estaba abierta
             
-            # ASIGNACIÓN EXACTA SEGÚN TU CONFIGURACIÓN DE PRODUCCIÓN
+            # ASIGNACIÓN EXACTA DE PERMISOS SEGÚN TU ESQUEMA SQLITE/POSTGRES
             session["permisos"] = {
                 "vender": cajero[4],
                 "pedidos": cajero[5],
@@ -2669,15 +2620,15 @@ def login_cajero():
                 "stock": cajero[7],
                 "agregar": cajero[8]
             }
+            session.permanent = True
             
-            # REDIRECCIÓN COMPLETA AUTOMÁTICA HACIA LA INTERFAZ OPERATIVA DE VENTAS
+            # 🎯 REDIRECCIÓN COMPLETA DE RED SEGURA: Viaja de inmediato sin pantallas en blanco
             return redirect("/ventas_ui")
         else:
             con.close()
-            return "❌ Usuario o contraseña incorrectos"
+            return render_template("login_cajero.html", error="❌ Usuario o contraseña incorrectos")
             
     return render_template("login_cajero.html")
-
 
 
 @app.route("/caja/cerrar", methods=["POST"])
