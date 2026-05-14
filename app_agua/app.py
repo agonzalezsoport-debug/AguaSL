@@ -2609,24 +2609,37 @@ def login_cajero():
         con = get_db()
         cur = con.cursor()
         
-        # Validamos las credenciales fijas con tus índices posicionales
+        # 1. Traemos al cajero usando tus índices fijos posicionales tradicionales
         ejecutar(cur, con, "SELECT * FROM cajeros WHERE usuario = %s AND password = %s", (nombre, password))
         cajero = cur.fetchone()
 
         if cajero:
-            # Buscamos si existe la caja abierta para recuperar su ID exacto
-            ejecutar(cur, con, "SELECT id FROM caja WHERE TRIM(UPPER(cajero)) = TRIM(UPPER(%s)) AND TRIM(UPPER(estado)) = 'ABIERTA' LIMIT 1", (nombre,))
-            caja_existente = cur.fetchone()
-            caja_id_detectado = caja_existente[0] if caja_existente else None
-            con.close()
-
-            # Estructuración limpia de cookies en Render
-            session.clear()
-            session["cajero_id"] = cajero[0]
-            session["nombre_cajero"] = cajero[1]
-            session["caja_id"] = caja_id_detectado  # Reutiliza el ID transparente si ya estaba abierta
+            # ================= CORRECCIÓN CRÍTICA DE ASIGNACIÓN =================
+            # Buscamos de forma obligatoria si este cajero tiene un turno activo en la DB
+            ejecutar(cur, con, """
+                SELECT id FROM caja 
+                WHERE TRIM(UPPER(cajero)) = TRIM(UPPER(%s)) AND TRIM(UPPER(estado)) = 'ABIERTA' 
+                LIMIT 1
+            """, (nombre,))
             
-            # ASIGNACIÓN EXACTA DE PERMISOS SEGÚN TU ESQUEMA SQLITE/POSTGRES
+            caja_existente = cur.fetchone()
+            con.close()
+            
+            caja_id_detectado = None
+            if caja_existente:
+                # Extraemos el ID adaptado a Tuplas (Render) y Objetos Row (PC Local)
+                if isinstance(caja_existente, (list, tuple)):
+                    caja_id_detectado = caja_existente[0]
+                else:
+                    caja_id_detectado = caja_existente["id"]
+
+            # 2. Armado de la sesión con persistencia real del estado de la caja
+            session.clear()
+            session["cajero_id"] = cajero[0]  # ID del cajero
+            session["nombre_cajero"] = cajero[1]  # Nombre del cajero
+            session["caja_id"] = caja_id_detectado  # 🔥 INYECCIÓN CORRECTA: Si hay caja abierta, la asocia de inmediato
+
+            # Asignación exacta de permisos según tu esquema de producción
             session["permisos"] = {
                 "vender": cajero[4],
                 "pedidos": cajero[5],
@@ -2636,13 +2649,19 @@ def login_cajero():
             }
             session.permanent = True
             
-            # 🎯 REDIRECCIÓN COMPLETA DE RED SEGURA: Viaja de inmediato sin pantallas en blanco
-            return redirect("/ventas_ui")
+            # 3. REDIRECCIÓN INTELIGENTE DE ENTRADA
+            # Si el sistema detectó una caja abierta previa, lo manda directo a vender para ahorrar tiempo
+            if caja_id_detectado:
+                return redirect("/ventas_ui")
+                
+            # Si es un inicio de sesión limpio sin turnos abiertos, va al dashboard para abrir una nueva
+            return redirect("/dashboard_cajero")
         else:
             con.close()
             return render_template("login_cajero.html", error="❌ Usuario o contraseña incorrectos")
             
     return render_template("login_cajero.html")
+
 
 
 @app.route("/caja/cerrar", methods=["POST"])
