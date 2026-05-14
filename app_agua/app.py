@@ -828,13 +828,13 @@ def login():
     if request.method == "POST":
         password_ingresada = request.form.get("password")
 
-        # 1. Verificamos si existe el usuario 'admin' en la DB para validar que el sistema está ok
-        con = get_db_local() # O get_db() según tu alias
+        # 1. Verificamos si existe el usuario 'admin' en la DB
+        con = get_db() # Usamos get_db() para la conexión de Render
         cur = con.cursor()
         
         try:
-            # Buscamos al usuario admin
-            cur.execute("SELECT nombre FROM usuarios WHERE nombre = ?", ("admin",))
+            # Usamos ejecutar y %s para que sea compatible en Render/Postgres
+            ejecutar(cur, con, "SELECT nombre FROM usuarios WHERE nombre = %s", ("admin",))
             usuario = cur.fetchone()
         except Exception as e:
             print(f"🔥 Error en query de login: {e}")
@@ -843,18 +843,56 @@ def login():
             con.close()
 
         if usuario:
-            # 2. VALIDACIÓN CLAVE: Comparamos contra la variable ADMIN_PASSWORD cargada del .env
-            # Esto ignora el hash de la DB y usa lo que definiste en el archivo de configuración
+            # 2. VALIDACIÓN CLAVE contra tu variable del .env
             if password_ingresada == ADMIN_PASSWORD:
                 session["admin"] = True
-                session.permanent = True # Para que no se cierre la sesión rápido
+                session.permanent = True 
+                
+                # ================= CONTROL INMEDIATO DE CAJA EN RENDER =================
+                con_check = get_db()
+                cur_check = con_check.cursor()
+                
+                # Buscamos si existe alguna caja en estado ABIERTA
+                ejecutar(cur_check, con_check, """
+                    SELECT id, "cajero", fecha_apertura, monto_inicial 
+                    FROM caja 
+                    WHERE TRIM(UPPER(estado)) = %s 
+                    LIMIT 1
+                """, ('ABIERTA',))
+                
+                caja_abierta = cur_check.fetchone()
+                con_check.close()
+                
+                # 3. Si Postgres encuentra una fila activa, disparamos la alerta visual
+                if caja_abierta:
+                    # EXTRACCIÓN POSICIONAL PURA PARA POSTGRES EN RENDER
+                    id_caja = caja_abierta[0]
+                    usuario_caja = caja_abierta[1]
+                    fecha_caja = caja_abierta[2]
+                    monto_caja = caja_abierta[3]
+                    
+                    try:
+                        monto_formateado = f"${float(monto_caja):,.2f}"
+                    except (ValueError, TypeError):
+                        monto_formateado = f"${monto_caja}"
+                        
+                    # Devuelve el script que muestra el aviso antes de entrar al panel
+                    return f"""
+                    <script>
+                        alert("⚠️ CONTROL DE CAJAS AL INICIAR (ADMIN):\\n\\nIngresaste correctamente, pero el sistema detectó una caja activa.\\n\\n• N° de Caja: {id_caja}\\n• Cajero a cargo: {usuario_caja}\\n• Apertura: {fecha_caja}\\n• Monto Inicial: {monto_formateado}\\n\\nRecordá que debés supervisar su cierre desde el historial.");
+                        window.location.href = "/dashboard";
+                    </script>
+                    """
+                
+                # Si no hay ninguna caja activa, ingresa directo al panel
                 return redirect("/dashboard")
             else:
                 return "❌ Clave incorrecta"
         else:
-            return "❌ El usuario administrador no existe en la base de datos local"
+            return "❌ El usuario administrador no existe en la base de datos"
 
     return render_template("login.html")
+
 
 import os
 
@@ -909,36 +947,73 @@ def cambiar_clave():
 
 @app.route("/logout")
 def logout():
-    # 1. Obtener el ID de la caja de la sesión actual
+    # 1. Obtener datos de la sesión actual
+    cajero_id = session.get("cajero_id")
     caja_id = session.get("caja_id")
     
-    # 2. Si hay un ID en sesión, verificar su estado en la DB
-    if caja_id:
-        con = get_db()
-        cur = con.cursor()
+    # Si no hay un cajero logueado, el usuario actual es el Administrador
+    es_admin = cajero_id is None 
+    
+    con = get_db()  # Conexión de Render (PostgreSQL)
+    cur = con.cursor()
+
+    # ================= CONTROLES PARA EL ADMINISTRADOR =================
+    if es_admin:
+        # Buscamos si hay alguna caja en estado ABIERTA en todo el sistema
+        # Usamos %s para el formateo nativo de Postgres
+        ejecutar(cur, con, """
+            SELECT id, "cajero", fecha_apertura, monto_inicial 
+            FROM caja 
+            WHERE TRIM(UPPER(estado)) = %s 
+            LIMIT 1
+        """, ('ABIERTA',))
         
-        # Usamos 'ejecutar' y '%s' para que funcione en Postgres y SQLite
-        ejecutar(cur, con, "SELECT estado FROM caja WHERE id = %s", (caja_id,))
-        
-        caja = cur.fetchone()
+        caja_abierta = cur.fetchone()
         con.close()
 
-        # Extraemos el valor del estado de forma segura
-        estado = caja[0] if caja and isinstance(caja, (list, tuple)) else (caja["estado"] if caja else None)
+        # Si Postgres encuentra una fila, el Admin no puede salir
+        if caja_abierta:
+            # EXTRACCIÓN POSICIONAL PURA PARA RENDER (Tuplas de Postgres)
+            id_caja = caja_abierta[0]
+            usuario_caja = caja_abierta[1]
+            fecha_caja = caja_abierta[2]
+            monto_caja = caja_abierta[3]
 
-        # 🚨 Si la caja sigue ABIERTA → NO dejar salir (solo para cajeros)
-        if estado == 'ABIERTA':
-            return """
+            try:
+                monto_formateado = f"${float(monto_caja):,.2f}"
+            except (ValueError, TypeError):
+                monto_formateado = f"${monto_caja}"
+
+            # Bloquea el logout del admin y lo devuelve a su panel principal
+            return f"""
             <script>
-                alert("⚠️ Debes cerrar TU caja antes de salir");
-                window.location.href = "/dashboard_cajero";
+                alert("⚠️ CONTROL DE CAJAS ABIERTAS (ADMIN):\\n\\nNo podés cerrar sesión porque hay una caja activa en el sistema.\\n\\n• N° de Caja: {id_caja}\\n• Cajero a cargo: {usuario_caja}\\n• Apertura: {fecha_caja}\\n• Monto Inicial: {monto_formateado}\\n\\nPor favor, solicita el cierre de la caja o gestiónala desde el historial.");
+                window.location.href = "/dashboard";
             </script>
             """
 
-    # ✅ Limpiar sesión (borra admin, cajero_id, etc.)
-    session.clear()
+    # ================= CONTROLES PARA EL CAJERO =================
+    elif caja_id:
+        ejecutar(cur, con, "SELECT estado FROM caja WHERE id = %s", (caja_id,))
+        caja = cur.fetchone()
+        con.close()
 
-    # 🎯 CAMBIO CLAVE: Redirigir a la raíz para ver los botones de colores
+        if caja:
+            # Extracción posicional para la consulta del cajero en Postgres
+            estado = caja[0]
+            
+            if estado and estado.strip().upper() == 'ABIERTA':
+                return """
+                <script>
+                    alert("⚠️ Debes cerrar TU caja antes de salir");
+                    window.location.href = "/dashboard_cajero";
+                </script>
+                """
+    else:
+        con.close()
+
+    # Si el sistema no encuentra ninguna traba de seguridad, limpia la sesión
+    session.clear()
     return redirect("/")
 
 
