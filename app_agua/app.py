@@ -409,6 +409,79 @@ def sync_venta_to_cloud(venta_id, fecha, total, recargo, descuento, total_final,
             item_fixed = dict(item)
             item_fixed["venta_id"] = venta_id
             save_offline("venta_items", "insert", item_fixed)
+# ================== ACCIÓN: FORZAR CIERRE DE CAJA HÍBRIDO (LOCAL / RENDER) ==================
+@app.route("/admin/forzar_cierre_caja/<id>")
+def forzar_cierre_caja(id):
+    if not session.get("admin"):
+        return "No tenés permisos para realizar esta acción", 403
+
+    fecha_actual = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    con = get_db()  # Conecta dinámicamente a la DB correspondiente según el entorno (Render o Local)
+    cur = con.cursor()
+
+    try:
+        # 1. Obtener el monto inicial de la caja seleccionada
+        ejecutar(cur, con, "SELECT monto_inicial FROM caja WHERE id = %s", (id,))
+        caja_row = cur.fetchone()
+        
+        if not caja_row:
+            con.close()
+            return "La caja especificada no existe", 404
+            
+        # Extracción segura: Postgres devuelve tupla, SQLite devuelve objeto Row
+        if isinstance(caja_row, (list, tuple)):
+            monto_inicial = float(caja_row[0] or 0)
+        else:
+            monto_inicial = float(caja_row["monto_inicial"] or 0)
+
+        # 2. Calcular la sumatoria de ventas de ESTA caja únicamente
+        ejecutar(cur, con, "SELECT COALESCE(SUM(total_final), 0) FROM ventas WHERE caja_id = %s", (id,))
+        ventas_row = cur.fetchone()
+        
+        if isinstance(ventas_row, (list, tuple)):
+            total_ventas = float(ventas_row[0] or 0)
+        else:
+            # En SQLite Row tomamos la primera columna por índice directo
+            total_ventas = float(ventas_row[0] or 0)
+
+        # 3. Calcular los montos del arqueo definitivo
+        total_esperado = monto_inicial + total_ventas
+        diferencia = 0.0  # El administrador fuerza el cierre sin desvíos
+
+        # 4. Modificar el registro en la base de datos (Postgres en la nube o SQLite local)
+        ejecutar(cur, con, """
+            UPDATE caja 
+            SET estado = 'CERRADA', 
+                fecha_cierre = %s, 
+                cierre = %s, 
+                diferencia = %s 
+            WHERE id = %s
+        """, (fecha_actual, total_esperado, diferencia, id))
+        
+        con.commit()
+        
+        # 5. Si estás trabajando localmente, encolamos el cambio para Supabase
+        # Si estás directamente en Render, no hace falta encolar en sync_queue
+        if not os.environ.get("RENDER"):
+            datos_sync = {
+                "id": id,
+                "estado": "CERRADA",
+                "fecha_cierre": fecha_actual,
+                "cierre": total_esperado,
+                "diferencia": diferencia
+            }
+            save_offline("caja", "update", datos_sync)
+            
+        print(f"🔒 ¡ÉXITO! Caja {id} cerrada de manera exitosa en el entorno activo.")
+        
+    except Exception as e:
+        con.rollback()
+        print(f"❌ Error crítico al forzar cierre de caja: {e}")
+    finally:
+        con.close()
+
+    return redirect("/admin/cierres_caja")
+            
             
 
             
