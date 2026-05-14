@@ -25,14 +25,13 @@
             </div>
         {% endif %}
 
-        <!-- Agregamos un ID para controlar el envío con JavaScript -->
         <form method="POST" action="/login_cajero" class="login-form" id="formLoginCajero">
 
             <input type="text" name="nombre" id="inputUsuario" placeholder="Usuario" required>
 
             <input type="password" name="password" placeholder="Contraseña" required>
 
-            <!-- Campo oculto mandatorio para enviar la decisión al backend -->
+            <!-- Campo invisible para la bandera de confirmación -->
             <input type="hidden" name="confirmado_reingreso" id="confirmadoReingreso" value="false">
 
             <button type="submit" class="btn">
@@ -53,39 +52,50 @@
 
 <script>
 document.getElementById("formLoginCajero").addEventListener("submit", function(e) {
-    // Si la bandera ya está en "true", permitimos que el formulario viaje normalmente
+    // Si el usuario ya aceptó el reingreso, enviamos el formulario nativo sin trabas
     if (document.getElementById("confirmadoReingreso").value === "true") {
         return;
     }
 
-    e.preventDefault(); // Frenamos el envío tradicional para verificar el estado de la caja primero
+    e.preventDefault(); // Frenamos el envío para inspeccionar el endpoint del servidor
     const form = this;
-    const usuario = document.getElementById("inputUsuario").value;
+    
+    // Limpiamos el texto digitado para evitar fallas de comparación
+    const usuarioDigitado = document.getElementById("inputUsuario").value.trim().toLowerCase();
 
-    // Consultamos de fondo a nuestra API si el cajero tiene un turno activo en Render
-    fetch(`/api/verificar_caja_abierta?usuario=${encodeURIComponent(usuario)}`)
+    fetch("/verificar_caja")
     .then(res => res.json())
     .then(data => {
-        if (data.abierta) {
-            // El navegador abre el cuadro nativo sin alterar el árbol DOM de la página
-            let respuesta = confirm(`⚠️ TURNOS SIMULTÁNEOS DETECTADOS:\n\nYa figura una caja ABIERTA en el sistema bajo el usuario '${usuario}'.\n• Apertura: ${data.fecha_apertura}\n\n¿Deseás ingresar de todas formas y continuar vendiendo en esa misma caja?\n\n[Aceptar] = Entrar directo a realizar ventas.\n[Cancelar] = Volver atrás para cambiar de usuario.`);
+        // Si el backend confirma que existe una caja abierta
+        if (data.ABIERTA && data.cajero) {
+            const cajeroAsignado = data.cajero.trim().toLowerCase();
             
-            if (respuesta) {
-                // Si el cajero acepta, cambiamos la bandera oculta y enviamos el formulario real de la pantalla
+            // Si el cajero de la caja abierta coincide con el que intenta loguearse
+            if (usuarioDigitado === cajeroAsignado) {
+                let respuesta = confirm(`⚠️ TURNOS SIMULTÁNEOS DETECTADOS:\n\nYa figura una caja ABIERTA en el sistema bajo el usuario '${data.cajero}'.\n\n¿Deseás ingresar de todas formas y continuar vendiendo en esa misma caja?\n\n[Aceptar] = Entrar directo a realizar ventas.\n[Cancelar] = Volver atrás para cambiar de usuario.`);
+                
+                if (respuesta) {
+                    // Activamos la bandera y enviamos el formulario físico
+                    document.getElementById("confirmadoReingreso").value = "true";
+                    form.submit();
+                } else {
+                    // Si presiona Cancelar, limpiamos los campos y se queda en el login
+                    form.reset();
+                }
+            } else {
+                // Si la caja pertenece a otra persona, dejamos pasar el flujo para que
+                // la ruta /login_cajero aplique los rechazos correspondientes en el servidor
                 document.getElementById("confirmadoReingreso").value = "true";
                 form.submit();
-            } else {
-                // Si cancela, limpiamos el formulario de forma nativa para que use otra cuenta
-                form.reset();
             }
         } else {
-            // Si no tiene cajas abiertas previas, viaja directo al inicio de sesión normal
+            // Si no hay ninguna caja abierta en el sistema, ingresa directo
             document.getElementById("confirmadoReingreso").value = "true";
             form.submit();
         }
     })
     .catch(err => {
-        // Blindaje por si falla la red: envía el formulario por el flujo clásico
+        // En caso de caída de red o error de JSON, se envía por el método tradicional para no congelar la app
         document.getElementById("confirmadoReingreso").value = "true";
         form.submit();
     });
