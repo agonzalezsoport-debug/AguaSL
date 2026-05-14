@@ -2644,7 +2644,7 @@ def login_cajero():
                             form.submit();
                         }} else {{
                             // CAMBIO SOLICITADO: Si pone cancelar, se lo mantiene estrictamente en la vista de login
-                            window.location.href = "/login_cajero";
+                            window.location.href = "/login_cajero.html";
                         }}
                     </script>
                     """
