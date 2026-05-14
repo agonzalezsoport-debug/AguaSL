@@ -1061,16 +1061,30 @@ def estado_caja():
 
 @app.route("/verificar_caja")
 def verificar_caja():
-
     con = get_db()
     cur = con.cursor()
 
-    cur.execute("SELECT id FROM caja WHERE estado='ABIERTA'")
+    # Buscamos la caja que esté abierta en el sistema
+    cur.execute('SELECT id, "cajero" FROM caja WHERE estado = \'ABIERTA\' LIMIT 1')
     caja = cur.fetchone()
-
     con.close()
 
-    return {"ABIERTA": bool(caja)}
+    if caja:
+        # Extraemos el nombre del cajero de forma ultra-segura para Postgres y SQLite
+        if isinstance(caja, (list, tuple)):
+            nombre_cajero = caja[1]
+        elif hasattr(caja, 'keys'):
+            nombre_cajero = caja["cajero"]
+        else:
+            nombre_cajero = str(caja)
+
+        return {
+            "ABIERTA": True,
+            "cajero": str(nombre_cajero).strip()
+        }
+        
+    return {"ABIERTA": False}
+
 
 # ================== DASHBOARD ==================
 @app.route("/dashboard")
