@@ -2609,37 +2609,39 @@ def login_cajero():
         con = get_db()
         cur = con.cursor()
         
-        # 1. Traemos al cajero usando tus índices fijos posicionales tradicionales
+        # 1. Validamos las credenciales del cajero
         ejecutar(cur, con, "SELECT * FROM cajeros WHERE usuario = %s AND password = %s", (nombre, password))
         cajero = cur.fetchone()
 
         if cajero:
-            # ================= CORRECCIÓN CRÍTICA DE ASIGNACIÓN =================
-            # Buscamos de forma obligatoria si este cajero tiene un turno activo en la DB
+            # Extraemos el nombre exacto con tus índices posicionales
+            nombre_exacto_db = cajero[1]
+            cajero_id_fijo = cajero[0]
+
+            # 2. Buscamos si ya tiene una caja abierta en Render (PostgreSQL)
             ejecutar(cur, con, """
                 SELECT id FROM caja 
                 WHERE TRIM(UPPER(cajero)) = TRIM(UPPER(%s)) AND TRIM(UPPER(estado)) = 'ABIERTA' 
                 LIMIT 1
-            """, (nombre,))
+            """, (nombre_exacto_db,))
             
             caja_existente = cur.fetchone()
             con.close()
             
+            # ELIMINACIÓN DE TUPLA: Extraemos estrictamente el texto plano del ID
             caja_id_detectado = None
             if caja_existente:
-                # Extraemos el ID adaptado a Tuplas (Render) y Objetos Row (PC Local)
                 if isinstance(caja_existente, (list, tuple)):
-                    caja_id_detectado = caja_existente[0]
+                    caja_id_detectado = str(caja_existente[0]) # <--- Tomamos solo el ID de la tupla
                 else:
-                    caja_id_detectado = caja_existente["id"]
+                    caja_id_detectado = str(caja_existente["id"])
 
-            # 2. Armado de la sesión con persistencia real del estado de la caja
+            # 3. Guardamos la sesión limpia sin caracteres extraños
             session.clear()
-            session["cajero_id"] = cajero[0]  # ID del cajero
-            session["nombre_cajero"] = cajero[1]  # Nombre del cajero
-            session["caja_id"] = caja_id_detectado  # 🔥 INYECCIÓN CORRECTA: Si hay caja abierta, la asocia de inmediato
+            session["cajero_id"] = cajero_id_fijo
+            session["nombre_cajero"] = nombre_exacto_db
+            session["caja_id"] = caja_id_detectado # Ahora se guarda como string limpio: 'e549b2bd...'
 
-            # Asignación exacta de permisos según tu esquema de producción
             session["permisos"] = {
                 "vender": cajero[4],
                 "pedidos": cajero[5],
@@ -2649,18 +2651,16 @@ def login_cajero():
             }
             session.permanent = True
             
-            # 3. REDIRECCIÓN INTELIGENTE DE ENTRADA
-            # Si el sistema detectó una caja abierta previa, lo manda directo a vender para ahorrar tiempo
             if caja_id_detectado:
                 return redirect("/ventas_ui")
                 
-            # Si es un inicio de sesión limpio sin turnos abiertos, va al dashboard para abrir una nueva
             return redirect("/dashboard_cajero")
         else:
             con.close()
             return render_template("login_cajero.html", error="❌ Usuario o contraseña incorrectos")
             
     return render_template("login_cajero.html")
+
 
 
 
