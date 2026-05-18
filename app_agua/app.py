@@ -1822,7 +1822,7 @@ def ver_cierres_caja():
         
         cierres_procesados = []
         for r in rows:
-            # CONVERSIÓN SEGURO A DICCIONARIO (Une SQLite y Postgres para tu HTML)
+            # CONVERSIÓN SEGURA A DICCIONARIO (Une SQLite y Postgres para tu HTML)
             if hasattr(r, 'keys'): # Si es el objeto Row de SQLite en la PC
                 d = dict(r)
             else: # Si es la tupla nativa de PostgreSQL en Render
@@ -1837,13 +1837,16 @@ def ver_cierres_caja():
                     "estado": r[7]
                 }
             
-            # Limpieza financiera para evitar errores de renderizado en Jinja
+            # Limpieza financiera con 'None' corregido en mayúscula
             d['monto_inicial'] = float(d.get('monto_inicial') or 0)
-            if d.get('cierre') is not none: d['cierre'] = float(d['cierre'])
-            if d.get('diferencia') is not none: d['diferencia'] = float(d['diferencia'])
+            if d.get('cierre') is not None: 
+                d['cierre'] = float(d['cierre'])
+            if d.get('diferencia') is not None: 
+                d['diferencia'] = float(d['diferencia'])
             
             # Aseguramos limpiar espacios del estado en el propio servidor
-            if d.get('estado'): d['estado'] = str(d['estado']).strip().upper()
+            if d.get('estado'): 
+                d['estado'] = str(d['estado']).strip().upper()
             
             cierres_procesados.append(d)
             
@@ -1853,9 +1856,6 @@ def ver_cierres_caja():
     except Exception as e:
         print(f"ERROR EN HISTORIAL: {e}")
         return f"Error al cargar el historial: {e}"
-
-
-
 
 
 
