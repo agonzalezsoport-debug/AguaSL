@@ -1,104 +1,110 @@
 {% extends "base.html" %}
+
 {% block content %}
 <div class="header-section" style="margin-bottom: 25px;">
- <h2 style="display: flex; align-items: center; gap: 10px;">
- <span style="font-size: 30px;"> </span> Historial de Turnos y Cierres 📋
- </h2>
- <p style="color: var(--muted); font-size: 14px;">Consulta el rendimiento y 
-arqueo de cada cajero.</p>
+    <h2 style="display: flex; align-items: center; gap: 10px;">
+        Historial de Turnos y Cierres
+    </h2>
+    <p style="color: var(--muted); font-size: 14px;">Consulta el rendimiento y arqueo de cada cajero.</p>
 </div>
+
 <div class="card">
- <div style="overflow-x: auto;">
- <table style="width: 100%; border-collapse: collapse; min-width: 
-600px;">
- <thead>
- <tr style="text-align: left; border-bottom: 2px solid 
-var(--bg);">
- <th style="padding: 15px; color: var(--muted); font-size: 
-13px;">CAJERO</th>
- <th style="padding: 15px; color: var(--muted); font-size: 
-13px;">APERTURA</th>
- <th style="padding: 15px; color: var(--muted); font-size: 
-13px;">CIERRE</th>
- <th style="padding: 15px; color: var(--muted); font-size: 
-13px;">INICIAL</th>
- <th style="padding: 15px; color: var(--muted); font-size: 
-13px;">REAL</th>
- <th style="padding: 15px; color: var(--muted); font-size: 
-13px;">DIFERENCIA</th>
- <th style="padding: 15px; color: var(--muted); font-size: 
-13px;">ESTADO</th>
- <th style="padding: 15px; color: var(--muted); font-size: 
-13px; text-align: center;">ACCIONES</th> <!-- 1. Encabezado de acciones -->
- </tr>
- </thead>
- <tbody>
- {% for c in cierres %}
- <tr style="border-bottom: 1px solid var(--bg); transition: 
-0.2s;" onmouseover="this.style.background='#f8fafc'" 
-onmouseout="this.style.background='transparent'">
- <td style="padding: 15px;"><strong>{{ c[1] }}</strong></td>
- <td style="padding: 15px; font-size: 13px; color: 
-var(--muted);">{{ c[2] }}</td>
- <td style="padding: 15px; font-size: 13px; color: 
-var(--muted);">{{ c[3] if c[3] else '---' }}</td>
- <td style="padding: 15px; font-weight: 600;">${{ 
-"{:,.2f}".format(c[4]) }}</td>
- <td style="padding: 15px; font-weight: 600;">
- {% if c[5] is not none %}
- ${{ "{:,.2f}".format(c[5] | float) }}
- {% else %}
- <span style="color: var(--muted);">---</span>
- {% endif %}
- </td>
- <td style="padding: 15px;">
- {% if c[6] is not none %}
- <span class="estado {{ 'entregado' if c[6] >= 0 else
-'pendiente' }}" style="font-size: 13px; padding: 4px 8px; border-radius: 6px;">
- ${{ "{:,.2f}".format(c[6] | float) }}
- </span>
- {% else %}
- <span style="color: var(--muted);">---</span>
- {% endif %}
- </td>
- <td style="padding: 15px;">
- <span class="badge {{ 'admin' if c[7] and c[7]|trim == 'ABIERTA' else 
-'' }}" 
- style="background: {{ '#22c55e' if c[7] and c[7]|trim == 
-'ABIERTA' else '#94a3b8' }}; padding: 5px 12px; border-radius: 20px; color: 
-white; font-size: 12px; font-weight: bold;">
- {{ c[7] }}
- </span>
- </td>
- 
- <!-- 2. Botón de cierre forzado adaptado a la tupla posicional c[0] con blindaje trim contra espacios en blanco -->
- <td style="padding: 15px; text-align: center;">
- {% if c[7] and c[7]|trim == 'ABIERTA' %}
- <a href="/admin/forzar_cierre_caja/{{ c[0] }}" 
- style="background: #ef4444; color: white; 
-padding: 6px 12px; border-radius: 6px; text-decoration: none; font-size: 12px; 
-font-weight: bold; display: inline-block; box-shadow: 0 2px 4px rgba(239, 68, 
-68, 0.2); transition: 0.2s;"
- onmouseover="this.style.background='#dc2626'" 
- onmouseout="this.style.background='#ef4444'"
- onclick="return confirm('¿Estás seguro de que deseas forzar el cierre de la caja de {{ c[1] }}?')">
- Cerrar 🔒
- </a>
- {% else %}
- <span style="color: var(--muted); font-size: 12px; 
-font-weight: 500;">Completado</span>
- {% endif %}
- </td>
- </tr>
- {% endfor %}
- </tbody>
- </table>
- </div>
+    <div style="overflow-x: auto;">
+        <table style="width: 100%; border-collapse: collapse; min-width: 600px;">
+            <thead>
+                <tr style="text-align: left; border-bottom: 2px solid var(--bg);">
+                    <th style="padding: 15px; color: var(--muted); font-size: 13px;">CAJERO</th>
+                    <th style="padding: 15px; color: var(--muted); font-size: 13px;">APERTURA</th>
+                    <th style="padding: 15px; color: var(--muted); font-size: 13px;">CIERRE</th>
+                    <th style="padding: 15px; color: var(--muted); font-size: 13px;">INICIAL</th>
+                    <th style="padding: 15px; color: var(--muted); font-size: 13px;">REAL</th>
+                    <th style="padding: 15px; color: var(--muted); font-size: 13px;">DIFERENCIA</th>
+                    <th style="padding: 15px; color: var(--muted); font-size: 13px;">ESTADO</th>
+                    <th style="padding: 15px; color: var(--muted); font-size: 13px; text-align: center;">ACCIONES</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for c in cajas %}
+                <tr style="border-bottom: 1px solid var(--bg); transition: 0.2s;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='transparent'">
+                    <td style="padding: 15px;"><strong>{{ c.cajero }}</strong></td>
+                    <td style="padding: 15px; font-size: 13px; color: var(--muted);">{{ c.fecha_apertura }}</td>
+                    <td style="padding: 15px; font-size: 13px; color: var(--muted);">{{ c.fecha_cierre if c.fecha_cierre else '---' }}</td>
+                    <td style="padding: 15px; font-weight: 600;">${{ "{:,.2f}".format(c.monto_inicial) }}</td>
+                    <td style="padding: 15px; font-weight: 600;">
+                        {% if c.cierre is not none %}
+                            ${{ "{:,.2f}".format(c.cierre | float) }}
+                        {% else %}
+                            <span style="color: var(--muted);">---</span>
+                        {% endif %}
+                    </td>
+                    <td style="padding: 15px;">
+                        {% if c.diferencia is not none %}
+                            <span class="estado {{ 'entregado' if c.diferencia >= 0 else 'pendiente' }}" style="font-size: 13px; padding: 4px 8px; border-radius: 6px;">
+                                ${{ "{:,.2f}".format(c.diferencia | float) }}
+                            </span>
+                        {% else %}
+                            <span style="color: var(--muted);">---</span>
+                        {% endif %}
+                    </td>
+                    <td style="padding: 15px;">
+                        {# Blindamos el fondo del badge usando trim para la base de datos de Render #}
+                        <span class="badge" style="background: {{ '#22c55e' if c.estado and c.estado|trim == 'ABIERTA' else '#94a3b8' }}; padding: 5px 12px; border-radius: 20px; color: white; font-size: 12px; font-weight: bold;">
+                            {{ c.estado }}
+                        </span>
+                    </td>
+                    
+                    <td style="padding: 15px; text-align: center;">
+                        {# Modificado: Aplicamos |trim para eliminar los espacios en blanco de PostgreSQL #}
+                        {% if c.estado and c.estado|trim == 'ABIERTA' %}
+                            <!-- Al usar c.id ahora sí viajará el UUID real hacia el backend en Python -->
+                            <form id="form_cierre_{{ c.id }}" action="/admin/forzar_cierre_caja/{{ c.id }}" method="POST" style="margin: 0; display: inline-block;">
+                                <input type="hidden" name="monto_cierre_real" id="input_monto_{{ c.id }}" value="0">
+                                
+                                <button type="button" 
+                                        style="background: #ef4444; color: white; padding: 6px 12px; border-radius: 6px; border: none; cursor: pointer; font-size: 12px; font-weight: bold; box-shadow: 0 2px 4px rgba(239, 68, 68, 0.2); transition: background 0.2s;"
+                                        onmouseover="this.style.background='#dc2626'" 
+                                        onmouseout="this.style.background='#ef4444'"
+                                        onclick="procesarCierreAdmin('{{ c.id }}', '{{ c.cajero }}')">
+                                    🔒 Cerrar
+                                </button>
+                            </form>
+                        {% else %}
+                            <span style="color: var(--muted); font-size: 12px; font-weight: 500;">Completado</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
 </div>
+
+<div style="margin-top: 20px;">
+    <a href="/dashboard" class="btn" style="padding: 10px 20px; background: #7f8c8d; color: white; border-radius: 6px; text-decoration: none; font-weight: bold; display: inline-block;">Volver</a>
+</div>
+
 <style>
- .badge.admin { background: linear-gradient(135deg, #22c55e, #16a34a) 
-!important; }
- .estado.entregado { background: #dcfce7; color: #166534; }
- .estado.pendiente { background: #fee2e2; color: #991b1b; }
+    .estado.entregado { background: #dcfce7; color: #166534; }
+    .estado.pendiente { background: #fee2e2; color: #991b1b; }
 </style>
+
+<script>
+function procesarCierreAdmin(cajaId, nombreCajero) {
+    let montoIngresado = prompt(`🔒 FORZAR CIERRE DE CAJA\n\nCajero: ${nombreCajero}\n\nIngresá el monto total de dinero físico registrado en caja:`);
+    if (montoIngresado === null) return;
+    
+    montoIngresado = montoIngresado.replace(',', '.').trim();
+    let montoFinal = parseFloat(montoIngresado);
+    
+    if (isNaN(montoFinal) || montoFinal < 0) {
+        alert("❌ Error: Debés ingresar un monto numérico válido igual o mayor a 0.");
+        return;
+    }
+    
+    document.getElementById(`input_monto_${cajaId}`).value = montoFinal;
+    if (confirm(`¿Confirmás el cierre forzado de la caja de ${nombreCajero} con un total de $${montoFinal.toFixed(2)}?`)) {
+        document.getElementById(`form_cierre_${cajaId}`).submit();
+    }
+}
+</script>
 {% endblock %}
