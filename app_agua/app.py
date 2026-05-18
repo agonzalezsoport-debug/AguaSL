@@ -1807,27 +1807,36 @@ def ventas():
 
 @app.route("/admin/cierres_caja")
 def ver_cierres_caja():
-    # 1. Quitamos la validación de admin para probar que el problema no sea la sesión
     try:
         con = get_db()
         cur = con.cursor()
         
-        # 2. Usamos el SQL correcto para tu tabla
+        # 2. Usamos el SQL correcto para tu tabla (Quitando comillas innecesarias)
         ejecutar(cur, con, """
-            SELECT id, cajero, fecha_apertura, fecha_cierre, monto_inicial, cierre, diferencia, estado
+            SELECT id, "cajero", fecha_apertura, fecha_cierre, monto_inicial, cierre, diferencia, estado
             FROM caja
             ORDER BY fecha_apertura DESC
-        """)
+        """, ())
         
-        cierres = cur.fetchall()
+        rows = cur.fetchall()
         con.close()
         
-        # 3. Forzamos el renderizado
-        return render_template("admin_cierres.html", cierres=cierres)
+        # 3. NORMALIZACIÓN TOTAL: Forzamos a que tanto SQLite como Postgres devuelvan tuplas puras
+        cierres_normalizados = []
+        for r in rows:
+            if hasattr(r, 'keys'): # Si es un objeto sqlite3.Row de la PC local
+                tupla_pura = (r["id"], r["cajero"], r["fecha_apertura"], r["fecha_cierre"], r["monto_inicial"], r["cierre"], r["diferencia"], r["estado"])
+            else: # Si ya es una tupla nativa (PostgreSQL en Render)
+                tupla_pura = r
+            cierres_normalizados.append(tupla_pura)
+            
+        # 4. Forzamos el renderizado pasando exactamente la variable 'cierres'
+        return render_template("admin_cierres.html", cierres=cierres_normalizados)
         
     except Exception as e:
         print(f"ERROR EN REPORTE: {e}")
         return f"Error al cargar el reporte: {e}"
+
 
 
 
