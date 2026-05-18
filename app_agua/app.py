@@ -410,10 +410,14 @@ def sync_venta_to_cloud(venta_id, fecha, total, recargo, descuento, total_final,
             item_fixed["venta_id"] = venta_id
             save_offline("venta_items", "insert", item_fixed)
 # ================== ACCIÓN: FORZAR CIERRE DE CAJA HÍBRIDO (LOCAL / RENDER) ==================
-@app.route("/admin/forzar_cierre_caja/<id>")
+# Corrección Crítica: Añadimos methods=["POST"] para solucionar el error Method Not Allowed
+@app.route("/admin/forzar_cierre_caja/<id>", methods=["POST"])
 def forzar_cierre_caja(id):
     if not session.get("admin"):
         return "No tenés permisos para realizar esta acción", 403
+
+    # Capturamos el monto real que el administrador escribió en el prompt de la pantalla
+    monto_cierre_real = float(request.form.get("monto_cierre_real") or 0)
 
     fecha_actual = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     con = get_db()  # Conecta dinámicamente a la DB correspondiente según el entorno (Render o Local)
@@ -444,9 +448,10 @@ def forzar_cierre_caja(id):
             # En SQLite Row tomamos la primera columna por índice directo
             total_ventas = float(ventas_row[0] or 0)
 
-        # 3. Calcular los montos del arqueo definitivo
+        # 3. Calcular los montos del arqueo definitivo con la diferencia real en Render
         total_esperado = monto_inicial + total_ventas
-        diferencia = 0.0  # El administrador fuerza el cierre sin desvíos
+        # Diferencia matemática: Dinero Real ingresado por el Admin MENOS el Dinero Esperado por el sistema
+        diferencia = monto_cierre_real - total_esperado
 
         # 4. Modificar el registro en la base de datos (Postgres en la nube o SQLite local)
         ejecutar(cur, con, """
@@ -456,7 +461,7 @@ def forzar_cierre_caja(id):
                 cierre = %s, 
                 diferencia = %s 
             WHERE id = %s
-        """, (fecha_actual, total_esperado, diferencia, id))
+        """, (fecha_actual, monto_cierre_real, diferencia, id))
         
         con.commit()
         
@@ -467,7 +472,7 @@ def forzar_cierre_caja(id):
                 "id": id,
                 "estado": "CERRADA",
                 "fecha_cierre": fecha_actual,
-                "cierre": total_esperado,
+                "cierre": monto_cierre_real,
                 "diferencia": diferencia
             }
             save_offline("caja", "update", datos_sync)
@@ -481,7 +486,7 @@ def forzar_cierre_caja(id):
         con.close()
 
     return redirect("/admin/cierres_caja")
-            
+
             
 
             
