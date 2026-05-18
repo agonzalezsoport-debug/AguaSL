@@ -1811,31 +1811,49 @@ def ver_cierres_caja():
         con = get_db()
         cur = con.cursor()
         
-        # 2. Usamos el SQL correcto para tu tabla (Quitando comillas innecesarias)
+        # Ejecutamos la consulta limpia
         ejecutar(cur, con, """
             SELECT id, "cajero", fecha_apertura, fecha_cierre, monto_inicial, cierre, diferencia, estado
             FROM caja
             ORDER BY fecha_apertura DESC
         """, ())
-        
         rows = cur.fetchall()
         con.close()
         
-        # 3. NORMALIZACIÓN TOTAL: Forzamos a que tanto SQLite como Postgres devuelvan tuplas puras
-        cierres_normalizados = []
+        cierres_procesados = []
         for r in rows:
-            if hasattr(r, 'keys'): # Si es un objeto sqlite3.Row de la PC local
-                tupla_pura = (r["id"], r["cajero"], r["fecha_apertura"], r["fecha_cierre"], r["monto_inicial"], r["cierre"], r["diferencia"], r["estado"])
-            else: # Si ya es una tupla nativa (PostgreSQL en Render)
-                tupla_pura = r
-            cierres_normalizados.append(tupla_pura)
+            # CONVERSIÓN SEGURO A DICCIONARIO (Une SQLite y Postgres para tu HTML)
+            if hasattr(r, 'keys'): # Si es el objeto Row de SQLite en la PC
+                d = dict(r)
+            else: # Si es la tupla nativa de PostgreSQL en Render
+                d = {
+                    "id": str(r[0]).strip(),
+                    "cajero": r[1],
+                    "fecha_apertura": r[2],
+                    "fecha_cierre": r[3],
+                    "monto_inicial": r[4],
+                    "cierre": r[5],
+                    "diferencia": r[6],
+                    "estado": r[7]
+                }
             
-        # 4. Forzamos el renderizado pasando exactamente la variable 'cierres'
-        return render_template("admin_cierres.html", cierres=cierres_normalizados)
+            # Limpieza financiera para evitar errores de renderizado en Jinja
+            d['monto_inicial'] = float(d.get('monto_inicial') or 0)
+            if d.get('cierre') is not none: d['cierre'] = float(d['cierre'])
+            if d.get('diferencia') is not none: d['diferencia'] = float(d['diferencia'])
+            
+            # Aseguramos limpiar espacios del estado en el propio servidor
+            if d.get('estado'): d['estado'] = str(d['estado']).strip().upper()
+            
+            cierres_procesados.append(d)
+            
+        # Enviamos 'cajas' para alimentar tu bucle {% for c in cajas %}
+        return render_template("admin_cierres.html", cajas=cierres_procesados)
         
     except Exception as e:
-        print(f"ERROR EN REPORTE: {e}")
-        return f"Error al cargar el reporte: {e}"
+        print(f"ERROR EN HISTORIAL: {e}")
+        return f"Error al cargar el historial: {e}"
+
 
 
 
