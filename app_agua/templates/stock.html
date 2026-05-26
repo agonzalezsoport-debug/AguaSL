@@ -359,7 +359,8 @@
 
                         <!-- 5. Input Stock (Mapeo corregido seguro contra Row) -->
                         <td>
-                            <input type="number" name="stock" class="input-edit stock-cell {% if p.stock <= 0 %}stock-alert{% endif %}" value="{{ p.stock }}" style="text-align: center; font-weight: 600; padding: 9px 4px;">
+                            <input type="number" name="stock" class="input-edit stock-cell {% if stock <= 0 %}stock-alert{% endif %}" value="{{ stock }}" style="text-align: center; font-weight: 600; padding: 9px 4px;">
+
                             
                             <input type="hidden" name="id" value="{{ p.id }}">
                             <select name="departamento" id="select-hidden-{{ p.id }}" style="display:none;">
