@@ -329,82 +329,80 @@
             </thead>
             <tbody>
                 {% for p in productos %}
-                <!-- 🛡️ Cambiados los índices numéricos por nombres de columna para sqlite3.Row -->
-                <tr class="product-row" data-dept="{{ p.departamento if p.departamento else 'Otros' }}">
+                <!-- 🛡️ Corregido usando índices numéricos directos para evitar errores de tupla en Render -->
+                <tr class="product-row" data-dept="Otros">
                     
                     <!-- 1. Código -->
-                    <td class="code-cell" style="font-weight: 600; color: #1e293b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ p.codigo }}</td>
-
-                    <!-- 2. Badge de Sector -->
-                    <td>
-                        {% if p.departamento %}
-                            <span class="badge-dept">{{ p.departamento }}</span>
-                        {% else %}
-                            <span class="badge-dept badge-empty">Sin asignar</span>
-                        {% endif %}
+                    <td class="code-cell" style="font-weight: 600; color: #1e293b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                        {{ p[1] }}
                     </td>
-
+            
+                    <!-- 2. Badge de Sector (Fijo en Sin asignar porque no está en tu consulta SELECT) -->
+                    <td>
+                        <span class="badge-dept badge-empty">Sin asignar</span>
+                    </td>
+            
                     <!-- FORMULARIO DE ENVÍO -->
-                    <form method="POST" id="form-{{ p.id }}">
+                    <form method="POST" id="form-{{ p[0] }}">
                         
                         <!-- 3. Input Descripción -->
                         <td>
-                            <input type="text" name="descripcion" class="input-edit desc-cell" value="{{ p.descripcion }}">
+                            <input type="text" name="descripcion" class="input-edit desc-cell" value="{{ p[2] }}">
                         </td>
-
+            
                         <!-- 4. Input Precio -->
                         <td>
-                            <input type="number" step="0.01" name="precio" class="input-edit price-cell" value="{{ p.precio }}" style="font-weight: 600; padding: 9px 6px;">
+                            <input type="number" step="0.01" name="precio" class="input-edit price-cell" value="{{ p[3] }}" style="font-weight: 600; padding: 9px 6px;">
                         </td>
-
-                        <!-- 5. Input Stock (Mapeo corregido seguro contra Row) -->
+            
+                        <!-- 5. Input Stock (CORREGIDO) -->
                         <td>
-                            <input type="number" name="stock" class="input-edit stock-cell {% if stock <= 0 %}stock-alert{% endif %}" value="{{ stock }}" style="text-align: center; font-weight: 600; padding: 9px 4px;">
-
+                            <input type="number" name="stock" class="input-edit stock-cell {% if p[4] <= 0 %}stock-alert{% endif %}" value="{{ p[4] }}" style="text-align: center; font-weight: 600; padding: 9px 4px;">
                             
-                            <input type="hidden" name="id" value="{{ p.id }}">
-                            <select name="departamento" id="select-hidden-{{ p.id }}" style="display:none;">
-                                <option value="{{ p.departamento if p.departamento else 'Otros' }}" selected>{{ p.departamento if p.departamento else 'Otros' }}</option>
+                            <input type="hidden" name="id" value="{{ p[0] }}">
+                            <select name="departamento" id="select-hidden-{{ p[0] }}" style="display:none;">
+                                <option value="Otros" selected>Otros</option>
                             </select>
                         </td>
                     </form>
-
+            
                     <!-- 6. Acciones -->
                     <td>
                         <div class="actions-group">
-                            <select class="input-edit" onchange="document.getElementById('select-hidden-{{ p.id }}').value = this.value;" style="width: 105px; font-size: 13px; padding: 7px 6px; height: 34px;">
-                                <option value="Otros" {% if p.departamento == 'Otros' or not p.departamento %}selected{% endif %}>Otros</option>
-                                <option value="Agua" {% if p.departamento == 'Agua' %}selected{% endif %}>Agua</option>
-                                <option value="Bebidas" {% if p.departamento == 'Bebidas' %}selected{% endif %}>Bebidas</option>
-                                <option value="Carnicería" {% if p.departamento == 'Carnicería' %}selected{% endif %}>Carnicería</option>
-                                <option value="Cigarrillos" {% if p.departamento == 'Cigarrillos' %}selected{% endif %}>Cigarrillos</option>
-                                <option value="Fiambrería" {% if p.departamento == 'Fiambrería' %}selected{% endif %}>Fiambrería</option>
-                                <option value="Golosinas" {% if p.departamento == 'Golosinas' %}selected{% endif %}>Golosinas</option>
-                                <option value="Higiene" {% if p.departamento == 'Higiene' %}selected{% endif %}>Higiene</option>
-                                <option value="Librería" {% if p.departamento == 'Librería' %}selected{% endif %}>Librería</option>
-                                <option value="Limpieza" {% if p.departamento == 'Limpieza' %}selected{% endif %}>Limpieza</option>
-                                <option value="Panadería" {% if p.departamento == 'Panadería' %}selected{% endif %}>Panadería</option>
-                                <option value="Sueltos" {% if p.departamento == 'Sueltos' %}selected{% endif %}>Sueltos</option>
-                                <option value="Verdulería" {% if p.departamento == 'Verdulería' %}selected{% endif %}>Verdulería</option>
+                            <select class="input-edit" onchange="document.getElementById('select-hidden-{{ p[0] }}').value = this.value;" style="width: 105px; font-size: 13px; padding: 7px 6px; height: 34px;">
+                                <option value="Otros" selected>Otros</option>
+                                <option value="Agua">Agua</option>
+                                <option value="Bebidas">Bebidas</option>
+                                <option value="Carnicería">Carnicería</option>
+                                <option value="Cigarrillos">Cigarrillos</option>
+                                <option value="Fiambrería">Fiambrería</option>
+                                <option value="Golosinas">Golosinas</option>
+                                <option value="Higiene">Higiene</option>
+                                <option value="Librería">Librería</option>
+                                <option value="Limpieza">Limpieza</option>
+                                <option value="Panadería">Panadería</option>
+                                <option value="Sueltos">Sueltos</option>
+                                <option value="Verdulería">Verdulería</option>
                             </select>
-
-                            <button class="btn-action btn-update" type="submit" form="form-{{ p.id }}" title="Guardar cambios">
+            
+                            <button class="btn-action btn-update" type="submit" form="form-{{ p[0] }}" title="Guardar cambios">
                                 💾
                             </button>
-
-                            <a class="btn-action btn-void" href="/stock/vaciar/{{ p.id }}" onclick="return confirm('¿Vaciar stock?')" title="Vaciar Unidades">
+            
+                            <a class="btn-action btn-void" href="/stock/vaciar/{{ p[0] }}" onclick="return confirm('¿Vaciar stock?')" title="Vaciar Unidades">
                                 🗑️
                             </a>
-
-                            <a class="btn-action btn-trash" href="/stock/eliminar/{{ p.id }}" onclick="return confirm('⚠️ ¿Eliminar producto por completo?')" title="Eliminar Producto">
+            
+                            <a class="btn-action btn-trash" href="/stock/eliminar/{{ p[0] }}" onclick="return confirm('⚠️ ¿Eliminar producto por completo?')" title="Eliminar Producto">
                                 ❌
                             </a>
                         </div>
                     </td>
-
+            
                 </tr>
                 {% endfor %}
             </tbody>
+
         </table>
     </div>
 
