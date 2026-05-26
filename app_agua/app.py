@@ -3136,7 +3136,7 @@ def stock():
 
     # ================= LISTAR PRODUCTOS =================
     ejecutar(cur, con, """
-        SELECT id, codigo, descripcion, precio, stock, departamento
+        SELECT id, codigo, descripcion, precio, stock
         FROM productos
         ORDER BY descripcion
     """)
