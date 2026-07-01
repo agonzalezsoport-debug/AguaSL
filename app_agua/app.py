@@ -704,23 +704,22 @@ def debug():
 # =================================================================
 @app.route('/auditoria/historial', methods=['GET'])
 def historial_auditoria():
-    # Capturamos los filtros que use el auditor desde el buscador web
+    if not session.get('admin'):
+        return redirect('/login')
+
     filtro_fecha = request.args.get('fecha', '')
     filtro_cajera = request.args.get('cajera', '').strip().upper()
     filtro_carnicero = request.args.get('carnicero', '').strip().upper()
     filtro_turno = request.args.get('turno', '')
 
-    # ☁️ Conexión directa a Supabase con PostgreSQL
     try:
-        con = get_db_cloud() # Tu función de conexión cloud espectacular
+        con = get_db_cloud()
         from psycopg2.extras import RealDictCursor
         cur = con.cursor(cursor_factory=RealDictCursor)
 
-        # Construimos la query dinámica para PostgreSQL
         query = "SELECT * FROM auditoria_cortes WHERE 1=1"
         params = []
 
-        # Usamos %s porque Supabase corre sobre PostgreSQL
         if filtro_fecha:
             query += " AND fecha = %s"
             params.append(filtro_fecha)
@@ -734,7 +733,6 @@ def historial_auditoria():
             query += " AND turno = %s"
             params.append(filtro_turno)
 
-        # Ordenamos para mostrar siempre lo último cargado primero
         query += " ORDER BY fecha DESC, id DESC"
 
         cur.execute(query, params)
@@ -748,7 +746,7 @@ def historial_auditoria():
         print(f"❌ Error de conexión cloud en el historial: {e}")
         registros_historicos = []
 
-    # Renderizamos la plantilla pasando los registros de Supabase y los filtros
+    # El render llama a la plantilla con el nombre de extensión corregido (.html)
     return render_template('historial_auditoria.html', 
                            admin=True, 
                            registros=registros_historicos,
