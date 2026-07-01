@@ -1,0 +1,210 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<style>
+    body {
+        background-color: #f4f7f6;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+
+    .caja-container {
+        max-width: 1250px;
+        margin: 30px auto;
+        padding: 0 20px;
+    }
+
+    .caja-title {
+        font-size: 26px;
+        font-weight: 700;
+        color: #1e293b;
+        margin-bottom: 25px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .table-responsive {
+        background: white;
+        border-radius: 16px;
+        overflow: hidden;
+        box-shadow: 0 10px 15px -3px rgba(0,0,0,0.05), 0 4px 6px -4px rgba(0,0,0,0.05);
+        border: 1px solid #e2e8f0;
+    }
+
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        text-align: left;
+    }
+
+    th {
+        background: #0f172a; /* Azul noche premium */
+        color: #f8fafc;
+        padding: 16px 12px;
+        font-size: 13px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    th:first-child { padding-left: 20px; }
+    th:last-child { padding-right: 20px; }
+
+    td {
+        padding: 14px 12px;
+        border-bottom: 1px solid #f1f5f9;
+        color: #334155;
+        font-size: 14.5px;
+        vertical-align: middle;
+    }
+
+    td:first-child { padding-left: 20px; }
+    td:last-child { padding-right: 20px; }
+
+    tr:last-child td {
+        border-bottom: none;
+    }
+
+    tr:hover {
+        background-color: #f8fafc;
+    }
+
+    /* 🟢 BADGES DE ESTADO */
+    .badge-status {
+        padding: 6px 12px;
+        border-radius: 8px;
+        font-size: 12px;
+        font-weight: 700;
+        display: inline-block;
+        text-transform: uppercase;
+    }
+
+    .status-open {
+        background-color: #dcfce7;
+        color: #15803d;
+    }
+
+    .status-closed {
+        background-color: #f1f5f9;
+        color: #475569;
+    }
+
+    /* 🚨 ALERTAS DE BALANCE EN DINERO */
+    .diff-badge {
+        padding: 4px 8px;
+        border-radius: 6px;
+        font-weight: 700;
+        font-size: 14px;
+        display: inline-block;
+    }
+
+    .diff-positive {
+        background-color: #e0f2fe;
+        color: #0369a1; /* Sobrante (Azul/Celeste informativo) */
+    }
+
+    .diff-negative {
+        background-color: #fee2e2;
+        color: #991b1b; /* Faltante de dinero (Rojo alerta) */
+    }
+
+    .diff-neutral {
+        color: #64748b; /* Caja perfecta sin diferencias */
+        font-weight: 600;
+    }
+
+    .back-link {
+        margin-top: 25px;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        text-decoration: none;
+        color: #64748b;
+        font-weight: 600;
+        font-size: 15px;
+        transition: color 0.2s;
+    }
+
+    .back-link:hover {
+        color: #0f172a;
+    }
+</style>
+
+<div class="caja-container">
+
+    <h2 class="caja-title">📊 Historial de Cajas y Turnos</h2>
+
+    <div class="table-responsive">
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 10%;">ID Turno</th>
+                    <th style="width: 15%;">Cajero</th>
+                    <th style="width: 18%;">Fecha Apertura</th>
+                    <th style="width: 18%;">Fecha Cierre</th>
+                    <th style="width: 12%;">Estado</th>
+                    <th style="width: 10%;">Monto Inicial</th>
+                    <th style="width: 10%;">Monto Final</th>
+                    <th style="width: 12%; text-align: right;">Diferencia</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for c in cajas %}
+                <tr>
+                    <!-- ID Cortado de manera segura -->
+                    <td style="font-family: monospace; font-weight: 600; color: #64748b;">
+                        #{{ c[0][:6] }}
+                    </td>
+                    
+                    <td style="font-weight: 600; color: #1e293b;">
+                        {{ c[1] }}
+                    </td>
+                    
+                    <td style="color: #475569; font-size: 13.5px;">
+                        {{ c[2] }}
+                    </td>
+                    
+                    <td style="color: #475569; font-size: 13.5px;">
+                        {{ c[3] or "-" }}
+                    </td>
+
+                    <!-- Estado con Badge Estilizado -->
+                    <td>
+                        {% if c[4] == "ABIERTA" %}
+                            <span class="badge-status status-open">🟢 Abierta</span>
+                        {% else %}
+                            <span class="badge-status status-closed">🔴 Cerrada</span>
+                        {% endif %}
+                    </td>
+
+                    <td style="font-weight: 600; color: #334155;">
+                        ${{ "%.2f"|format(c[5] or 0) }}
+                    </td>
+                    
+                    <td style="font-weight: 600; color: #0f172a;">
+                        ${{ "%.2f"|format(c[6] or 0) }}
+                    </td>
+
+                    <!-- Diferencia de Efectivo Dinámica -->
+                    <td style="text-align: right;">
+                        {% set diff = c[7] or 0 %}
+                        {% if diff > 0 %}
+                            <span class="diff-badge diff-positive">+${{ "%.2f"|format(diff) }}</span>
+                        {% elif diff < 0 %}
+                            <span class="diff-badge diff-negative">${{ "%.2f"|format(diff) }}</span>
+                        {% else %}
+                            <span class="diff-neutral">${{ "%.2f"|format(diff) }}</span>
+                        {% endif %}
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <a href="/dashboard_cajero" class="back-link">⬅️ Volver al Panel del Cajero</a>
+
+</div>
+
+{% endblock %}

@@ -1,0 +1,589 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2 style="margin-bottom:20px;">📊 Dashboard Contable - Reporte General</h2>
+
+<form method="GET" style="margin-bottom:20px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+
+    <label>Desde:</label>
+    <input type="date" name="desde" value="{{ desde }}">
+
+    <label>Hasta:</label>
+    <input type="date" name="hasta" value="{{ hasta }}">
+
+    <button style="padding:6px 12px;">Filtrar</button>
+
+    <!-- 🔥 BOTONES RÁPIDOS -->
+    <a href="?desde={{ hasta }}&hasta={{ hasta }}" class="btn-mini">Hoy</a>
+
+    <a href="?desde={{ hasta[:7] }}-01&hasta={{ hasta }}" class="btn-mini">
+        Este mes
+    </a>
+
+    <a href="/reporte_ventas" class="btn-mini reset">
+        Reset
+    </a>
+
+</form>
+<!-- PEGAR AQUÍ (Debajo del </form>) -->
+<div style="display: flex; gap: 20px; margin-bottom: 30px;">
+    <div style="flex: 1; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); border-left: 5px solid #16a34a;">
+        <span style="font-size: 12px; color: #858796; font-weight: bold; text-transform: uppercase;">Estado del Día</span>
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 10px;">
+            <span style="font-size: 24px; font-weight: bold; color: #333;">${{ "{:,.0f}".format(total_dinero) }}</span>
+            <span style="background: #d1fae5; color: #065f46; padding: 4px 8px; border-radius: 20px; font-size: 12px; font-weight: bold;">
+                ↑ Activo
+            </span>
+        </div>
+    </div>
+    <div style="flex: 1; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); border-left: 5px solid #4e73df;">
+        <span style="font-size: 12px; color: #858796; font-weight: bold; text-transform: uppercase;">Ticket Promedio</span>
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 10px;">
+            <span style="font-size: 24px; font-weight: bold; color: #333;">
+                ${{ "{:,.0f}".format(total_dinero / total_ventas if total_ventas > 0 else 0) }}
+            </span>
+            <i class="fas fa-receipt" style="color: #dddfeb; font-size: 24px;"></i>
+        </div>
+    </div>
+</div>
+
+
+<!-- ================= KPIs ================= -->
+<div style="
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+    gap:15px;
+    margin-bottom:25px;
+">
+
+    <div class="kpi blue">
+        <h3>💰 Ventas Totales</h3>
+        <p class="big">{{ total_ventas }}</p>
+        <span>${{ "{:,.2f}".format(total_dinero) }}</span>
+    </div>
+        <div class="kpi blue" style="background: linear-gradient(135deg, #6366f1, #4338ca);">
+        <h3>🎟️ Ticket Promedio</h3>
+        <p class="big">
+            {% if total_ventas > 0 %}
+                ${{ "{:,.2f}".format(total_dinero / total_ventas) }}
+            {% else %} $0.00 {% endif %}
+        </p>
+        <span>Gasto medio por venta</span>
+    </div>
+
+
+    <div class="kpi green">
+        <h3>📈 Utilidad Neta</h3>
+        <p class="big">${{ "{:,.2f}".format(utilidad) }}</p>
+        <span>Ganancia real</span>
+    </div>
+
+    <div class="kpi orange">
+        <h3>🧴 Litros Vendidos</h3>
+        <p class="big">{{ litros_vendidos }}</p>
+        <span>Litros totales</span>
+    </div>
+
+    <div class="kpi dark">
+        <h3>📦 Stock Actual</h3>
+        <p class="big">{{ stock_actual }}</p>
+        <span>Unidades disponibles</span>
+    </div>
+
+</div>
+
+
+<!-- ================= MÉTODOS DE PAGO ================= -->
+{% set montos = [] %}
+{% for v in ventas_dia %}{% set _ = montos.append(v[2]) %}{% endfor %}
+{% set max_venta = montos|max if montos else 1 %}
+
+<div style="background: white; padding: 25px; border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.05); margin-bottom: 30px;">
+    <h3 style="margin-bottom: 50px; color: #333; display: flex; align-items: center; gap: 10px; font-family: sans-serif;">
+        <span style="background: #16a34a; color: white; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border-radius: 8px;">$</span> 
+        Tendencia de Ingresos
+    </h3>
+
+    <div style="display: flex; align-items: flex-end; justify-content: space-around; height: 220px; padding-bottom: 40px; border-bottom: 2px solid #f0f2f5; gap: 20px;">
+        {% for v in ventas_dia %}
+            {% set porcentaje = (v[2]|float / max_venta|float * 100)|round|int %}
+
+            <div style="display: flex; flex-direction: column; align-items: center; flex: 1; max-width: 60px; height: 100%; justify-content: flex-end; position: relative;">
+                
+                <!-- Monto arriba -->
+                <span style="font-size: 11px; font-weight: bold; color: #16a34a; margin-bottom: 8px;">${{ "{:,.0f}".format(v[2]) }}</span>
+                
+                <!-- Barra CILÍNDRICA -->
+                <div style="background: linear-gradient(to right, #117a39 0%, #22c55e 50%, #117a39 100%); 
+                            width: 35px; 
+                            height: {{ porcentaje }}%; 
+                            border-radius: 50px 50px 4px 4px; 
+                            box-shadow: 6px 0 15px rgba(0,0,0,0.1);
+                            min-height: 3px;
+                            border-left: 1px solid rgba(255,255,255,0.2);">
+                </div>
+
+                <!-- Fecha -->
+                <div style="position: absolute; bottom: -35px; width: 100%; text-align: center;">
+                    <span style="font-size: 10px; color: #858796; font-weight: 600; white-space: nowrap;">{{ v[0] }}</span>
+                </div>
+            </div>
+        {% endfor %}
+    </div>
+</div>
+
+
+
+
+
+
+
+
+<h3>💳 Análisis de Métodos de Pago</h3>
+
+<table class="table-pro">
+<thead>
+    <tr>
+        <th>Método</th>
+        <th>Ventas</th>
+        <th>Subtotal</th>
+        <th>Recargo (+)</th>
+        <th>% Rec.</th> <!-- Nueva columna -->
+        <th>Descuento (-)</th>
+        <th>% Desc.</th> <!-- Nueva columna -->
+        <th>Total Final</th>
+    </tr>
+</thead>
+<tbody>
+<table class="table-pro">
+<thead>
+ <tr>
+ <th>Método</th>
+ <th>Ventas</th>
+ <th>Subtotal</th>
+ <th>Recargo (+)</th>
+ <th>% Rec.</th>
+ <th>Descuento (-)</th>
+ <th>% Desc.</th>
+ <th>Total Final</th>
+ </tr>
+</thead>
+<tbody>
+{% for m in metodos %}
+    <!-- 📊 ASIGNACIÓN DE ÍNDICES EXACTOS SEGÚN LA QUERY DE PYTHON -->
+    {% set metodo_nombre = m[0] %}
+    {% set cantidad_ventas = m[1] %}
+    {% set subtotal = m[2] or 0 %}
+    {% set recargo = m[3] or 0 %}
+    {% set descuento = m[4] or 0 %}
+    {% set total_final = m[5] or 0 %}
+
+<tr>
+    <!-- Nombre del método inyectado con su emoji contable desde Python -->
+    <td style="font-weight: bold; color: #1e293b;">{{ metodo_nombre }}</td>
+    <td style="text-align: center; font-weight: 600;">{{ cantidad_ventas }}</td>
+    <td>${{ "{:,.2f}".format(subtotal) }}</td>
+    
+    <!-- Recargo proporcional desglosado -->
+    <td style="color: #d97706; font-weight: 500;">
+        +${{ "{:,.2f}".format(recargo) }}
+    </td>
+    <!-- Cálculo automático del impacto porcentual del interés electrónico -->
+    <td style="font-size: 12px; color: #d97706; font-weight: bold;">
+        {% if subtotal > 0 %}
+            {{ "{:.1f}%".format((recargo|float / subtotal|float) * 100) }}
+        {% else %} 0% {% endif %}
+    </td>
+    
+    <!-- Descuento comercial aplicado -->
+    <td style="color: #dc2626;">
+        -${{ "{:,.2f}".format(descuento) }}
+    </td>
+    <!-- Cálculo porcentual del descuento aplicado -->
+    <td style="font-size: 12px; color: #dc2626; font-weight: bold;">
+        {% if subtotal > 0 %}
+          {{ "{:.1f}%".format((descuento|float / subtotal|float) * 100) }}
+        {% else %} 0% {% endif %}
+    </td>
+    
+    <!-- Facturación Bruta Final del Canal Monetario -->
+    <td style="font-weight: bold; color: #16a34a; font-size: 14px;">
+        ${{ "{:,.2f}".format(total_final) }}
+    </td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+
+
+
+<!-- ================= VENTAS POR DÍA ================= -->
+<h3>📆 Resumen Diario de Ventas</h3>
+
+<table class="table-pro">
+<thead>
+<tr>
+<th>Fecha</th>
+<th>Ventas</th>
+<th>Total diario</th>
+</tr>
+</thead>
+<tbody>
+{% for v in ventas_dia %}
+<tr>
+<td>{{ v[0] }}</td>
+<td>{{ v[1] }}</td>
+<td>${{ "{:,.2f}".format(v[2]) }}</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+
+<!-- ================= AUDITORÍA STOCK ================= -->
+<h3>📦 Auditoría de Stock (Control Interno)</h3>
+
+<table class="table-pro">
+<thead>
+<tr>
+<th>Producto</th>
+<th>Stock actual</th>
+<th>Unidades vendidas</th>
+</tr>
+</thead>
+<tbody>
+{% for a in auditoria_stock %}
+<tr>
+<td>{{ a[0] }}</td>
+<td>{{ a[1] }}</td>
+<td>{{ a[2] }}</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+<!-- ================= VENTAS POR DEPARTAMENTO ================= -->
+<h3>🏬 Ventas por Departamento / Promos</h3>
+
+<table class="table-pro">
+<thead>
+<tr>
+<th>Departamento</th>
+<th>Ventas</th>
+<th>Total vendido</th>
+</tr>
+</thead>
+
+<tbody>
+{% for d in ventas_departamento %}
+<tr>
+<td>{{ d[0] }}</td>
+<td>{{ d[1] }}</td>
+<td>${{ "{:,.2f}".format(d[2]) }}</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+
+<!-- ================= PRODUCTOS MÁS VENDIDOS ================= -->
+<h3>🏆 Ranking de Productos</h3>
+
+<table class="table-pro">
+<thead>
+<tr>
+<th>Producto</th>
+<th>Unidades</th>
+<th>Total vendido</th>
+<th>Responsable</th>
+</tr>
+</thead>
+<tbody>
+{% for p in productos_vendidos %}
+<tr>
+<td>{{ p[0] }}</td>
+<td>{{ p[1] }}</td>
+<td>${{ "{:,.2f}".format(p[2]) }}</td>
+<td>{{ p[3] }}</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+<!-- ================= TARJETAS DE GANANCIA TEMPORAL ================= -->
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 15px; margin-bottom: 25px;">
+    <div class="card" style="background: linear-gradient(135deg, #10b981, #059669); color: white; padding: 20px; border-radius: 12px; border: none; box-shadow: 0 4px 15px rgba(16,185,129,0.2);">
+        <span style="font-size: 0.85rem; font-weight: bold; text-transform: uppercase; opacity: 0.8;">📈 Ganancia del Día (Hoy)</span>
+        <h2 style="margin: 8px 0; font-size: 1.8rem; font-weight: 800;">${{ "{:,.2f}".format(ganancia_diaria) }}</h2>
+        <small style="opacity: 0.7;">Ventas líquidas de hoy menos costo de stock</small>
+    </div>
+    
+    <div class="card" style="background: linear-gradient(135deg, #3b82f6, #1d4ed8); color: white; padding: 20px; border-radius: 12px; border: none; box-shadow: 0 4px 15px rgba(59,130,246,0.2);">
+        <span style="font-size: 0.85rem; font-weight: bold; text-transform: uppercase; opacity: 0.8;">📆 Ganancia Semanal (7d)</span>
+        <h2 style="margin: 8px 0; font-size: 1.8rem; font-weight: 800;">${{ "{:,.2f}".format(ganancia_semanal) }}</h2>
+        <small style="opacity: 0.7;">Acumulado móvil de la última semana</small>
+    </div>
+
+    <div class="card" style="background: linear-gradient(135deg, #8b5cf6, #6d28d9); color: white; padding: 20px; border-radius: 12px; border: none; box-shadow: 0 4px 15px rgba(139,92,246,0.2);">
+        <span style="font-size: 0.85rem; font-weight: bold; text-transform: uppercase; opacity: 0.8;">📊 Ganancia Mensual (30d)</span>
+        <h2 style="margin: 8px 0; font-size: 1.8rem; font-weight: 800;">${{ "{:,.2f}".format(ganancia_mensual) }}</h2>
+        <small style="opacity: 0.7;">Balance de rentabilidad de los últimos 30 días</small>
+    </div>
+</div>
+
+<!-- ================= 🆕 BALANCE OPERATIVO DE GASTOS Y SERVICIOS ================= -->
+<h3>💸 Balance de Costos Operativos (Egresos en este período)</h3>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 15px; margin-bottom: 25px;">
+    
+    <!-- Tarjeta de Gastos Liquidados -->
+    <div class="card" style="background: linear-gradient(135deg, #ea580c, #c2410c); color: white; padding: 20px; border-radius: 12px; border: none; box-shadow: 0 4px 15px rgba(234,88,12,0.2);">
+        <span style="font-size: 0.85rem; font-weight: bold; text-transform: uppercase; opacity: 0.8;">📉 Gastos Operativos Pagados</span>
+        <h2 style="margin: 8px 0; font-size: 1.8rem; font-weight: 800;">${{ "{:,.2f}".format(total_gastos_pagados) }}</h2>
+        <small style="opacity: 0.7;">Servicios, alquileres y sueldos liquidados en este rango</small>
+    </div>
+    
+    <!-- Tarjeta de Deudas por Pagar -->
+    <div class="card" style="background: linear-gradient(135deg, #dc2626, #991b1b); color: white; padding: 20px; border-radius: 12px; border: none; box-shadow: 0 4px 15px rgba(220,38,38,0.2);">
+        <span style="font-size: 0.85rem; font-weight: bold; text-transform: uppercase; opacity: 0.8;">❌ Cuentas por Pagar (Pendientes)</span>
+        <h2 style="margin: 8px 0; font-size: 1.8rem; font-weight: 800;">${{ "{:,.2f}".format(total_gastos_pendientes) }}</h2>
+        <small style="opacity: 0.7;">Boletas y alquileres registrados sin abonar</small>
+    </div>
+
+    <!-- Tarjeta de Rendimiento Neto Real -->
+    <div class="card" style="background: linear-gradient(135deg, #1e1b4b, #312e81); color: white; padding: 20px; border-radius: 12px; border: none; box-shadow: 0 4px 15px rgba(30,27,75,0.2);">
+        <span style="font-size: 0.85rem; font-weight: bold; text-transform: uppercase; opacity: 0.8;">🏆 Rendimiento Comercial Neto</span>
+        <h2 style="margin: 8px 0; font-size: 1.8rem; font-weight: 800;">${{ "{:,.2f}".format(utilidad_neta_real) }}</h2>
+        <small style="opacity: 0.7;">Ganancia líquida total descontando stock y gastos fijos</small>
+    </div>
+</div>
+
+<!-- ================= VENTAS VS COSTOS POR DEPARTAMENTO ================= -->
+<h3>🏬 Análisis Contable por Departamento (Costo vs Venta)</h3>
+<table class="table-pro" style="margin-bottom: 30px;">
+<thead>
+    <tr>
+        <th>Departamento</th>
+        <th>Cant. Ventas</th>
+        <th>Costo Total Stock</th>
+        <th>Venta Total Cobrada</th>
+        <th>Ganancia Real Neta</th>
+        <th>Margen %</th>
+    </tr>
+</thead>
+<tbody>
+{% for d in ventas_departamento %}
+    {% set costo = d[2] or 0 %}
+    {% set venta = d[3] or 0 %}
+    {% set ganancia = d[4] or 0 %}
+    <tr>
+        <td style="font-weight: bold; color: #334155;">{{ d[0] }}</td>
+        <td style="text-align: center; font-weight: 600;">{{ d[1] }}</td>
+        <td style="color: #64748b;">${{ "{:,.2f}".format(costo) }}</td>
+        <td style="color: #0f172a; font-weight: 500;">${{ "{:,.2f}".format(venta) }}</td>
+        <!-- Pintar verde si dio ganancia o rojo si dio pérdida por variaciones -->
+        <td style="font-weight: bold; color: {% if ganancia >= 0 %}#16a34a{% else %}#dc2626{% endif %};">
+            ${{ "{:,.2f}".format(ganancia) }}
+        </td>
+        <td style="font-weight: bold; color: #2563eb; font-size: 13px;">
+            {% if costo > 0 %}
+                {{ "{:.1f}%".format((ganancia / costo) * 100) }}
+            {% else %} 0% {% endif %}
+        </td>
+    </tr>
+{% endfor %}
+</tbody>
+</table>
+
+
+<!-- ================= HISTORIAL DE ITEMS ================= -->
+<h3>🧾 Historial de Ventas por Ítem</h3>
+
+<table class="table-pro">
+<thead>
+<tr>
+<th>Fecha</th>
+<th>Producto</th>
+<th>Cantidad</th>
+<th>Subtotal</th>
+<th>Recargo (+)</th> <!-- 🆕 Nueva columna -->
+<th>Descuento (-)</th> <!-- 🆕 Nueva columna -->
+<th>Método de pago</th>
+<th>Cajero</th>
+</tr>
+</thead>
+
+<tbody>
+{% for h in historial_items %}
+<tr>
+<td>{{ h[0] }}</td>
+<td>{{ h[1] }}</td>
+<td style="text-align: center; font-weight: bold;">{{ h[2] }}</td>
+<td>${{ "{:,.2f}".format(h[3] or 0) }}</td>
+
+<!-- 🆕 Recargo Individual Desglosado -->
+<td style="color: #d97706; font-weight: 500;">
+    {% if h[6] and h[6] > 0 %}
+        +${{ "{:,.2f}".format(h[6]) }}
+    {% else %}
+        $0.00
+    {% endif %}
+</td>
+
+<!-- 🆕 Descuento Comercial Aplicado -->
+<td style="color: #dc2626;">
+    {% if h[7] and h[7] > 0 %}
+        -${{ "{:,.2f}".format(h[7]) }}
+    {% else %}
+        $0.00
+    {% endif %}
+</td>
+
+<!-- Muestra el detalle del desglose mixto completo ("🔄 Mixto (EF: $1000... )") -->
+<td style="font-weight: 600; color: #2563eb; font-size: 13px;">{{ h[4] }}</td>
+<td style="font-weight: 600; color: #475569;"><i class="fas fa-user-circle" style="font-size:12px; opacity:0.7;"></i> {{ h[5] }}</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+
+<!-- ================= ESTILOS ================= -->
+<style>
+
+.kpi{
+    padding:18px;
+    border-radius:16px;
+    color:white;
+    box-shadow:0 10px 25px rgba(0,0,0,0.15);
+    transition:0.3s;
+}
+.kpi:hover{
+    transform:translateY(-5px);
+}
+.kpi h3{
+    margin:0;
+    font-size:14px;
+    opacity:0.9;
+}
+.kpi .big{
+    font-size:26px;
+    font-weight:bold;
+    margin:8px 0;
+}
+.kpi span{
+    font-size:12px;
+    opacity:0.9;
+}
+
+/* colores */
+.blue{ background:linear-gradient(135deg,#2563eb,#1d4ed8);}
+.green{ background:linear-gradient(135deg,#22c55e,#16a34a);}
+.orange{ background:linear-gradient(135deg,#f59e0b,#d97706);}
+.dark{ background:linear-gradient(135deg,#1e293b,#0f172a);}
+
+/* TABLAS PRO */
+.table-pro{
+    width:100%;
+    border-collapse:collapse;
+    margin-bottom:25px;
+    background:white;
+    border-radius:12px;
+    overflow:hidden;
+    box-shadow:0 5px 15px rgba(0,0,0,0.08);
+}
+.btn-mini{
+    padding:6px 10px;
+    background:#e2e8f0;
+    border-radius:8px;
+    text-decoration:none;
+    font-size:12px;
+    color:#0f172a;
+    transition:0.2s;
+}
+
+.btn-mini:hover{
+    background:#cbd5e1;
+}
+
+.btn-mini.reset{
+    background:#fee2e2;
+}
+
+.btn-mini.reset:hover{
+    background:#fecaca;
+}
+
+.table-pro th{
+    background:#2563eb;
+    color:white;
+    padding:12px;
+    text-align:left;
+    font-size:13px;
+}
+
+.table-pro td{
+    padding:12px;
+    border-bottom:1px solid #eee;
+    font-size:14px;
+}
+
+.table-pro tr:hover{
+    background:#f1f5f9;
+}
+
+h3{
+    margin-top:25px;
+    margin-bottom:10px;
+}
+
+</style>
+<!-- 1. LIBRERÍA CORRECTA -->
+<!-- 1. Cargamos el archivo local que ya tienes en la carpeta -->
+<script src="{{ url_for('static', filename='chart.js') }}"></script>
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    const ctx = document.getElementById('graficoVentas').getContext('2d');
+    
+    // EXTRACCIÓN CORRECTA:
+    // v[0] es la Fecha
+    // v[2] es el Total de dinero (lo que queremos graficar)
+    const etiquetas = [{% for v in ventas_dia %}"{{ v[0] }}",{% endfor %}].reverse();
+    const datos = [{% for v in ventas_dia %}{{ v[2] }},{% endfor %}].reverse();
+
+    // Verificación por si las moscas (miralo en F12)
+    console.log("Datos para el gráfico:", datos);
+
+    if (datos.length === 0) {
+        console.warn("No hay ventas para el rango seleccionado.");
+        return;
+    }
+
+    new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: etiquetas,
+            datasets: [{
+                label: 'Ventas Totales ($)',
+                data: datos,
+                borderColor: '#16a34a',
+                backgroundColor: 'rgba(22, 163, 74, 0.1)',
+                fill: true,
+                tension: 0.3,
+                pointRadius: 6,
+                borderWidth: 3
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        callback: function(value) { return '$' + value; }
+                    }
+                }
+            }
+        }
+    });
+});
+</script>
+
+
+{% endblock %}

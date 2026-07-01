@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Auditoría de Mermas - Control Diario</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f8f9fa; margin: 20px; }
+        .main-container { max-width: 1100px; margin: 0 auto; background: white; padding: 25px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+        
+        h2 { color: #212529; margin-bottom: 20px; border-bottom: 3px solid #007bff; padding-bottom: 10px; }
+        
+        /* Formulario rápido superior */
+        .quick-form { background: #e9ecef; padding: 15px; border-radius: 6px; margin-bottom: 25px; display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+        .quick-form div { display: flex; flex-direction: column; flex: 1; min-width: 140px; }
+        .quick-form label { font-size: 13px; font-weight: bold; margin-bottom: 4px; }
+        .quick-form input, .quick-form select { padding: 8px; border: 1px solid #ced4da; border-radius: 4px; }
+        .btn-add { background: #007bff; color: white; border: none; padding: 9px 15px; border-radius: 4px; font-weight: bold; cursor: pointer; }
+        .btn-add:hover { background: #0056b3; }
+
+        /* Estilos de Tabla */
+        .table-auditoria { width: 100%; border-collapse: collapse; margin-top: 10px; margin-bottom: 25px; }
+        .table-auditoria th, .table-auditoria td { padding: 12px; text-align: left; border-bottom: 1px solid #dee2e6; }
+        .table-auditoria th { background-color: #343a40; color: white; font-weight: 600; }
+        
+        /* Clases de Control de Alertas Visuales */
+        .bg-danger-light { background-color: #f8d7da; color: #721c24; font-weight: bold; text-align: center; }
+        .bg-success-light { background-color: #d4edda; color: #155724; font-weight: bold; text-align: center; }
+        .bg-perfect-light { background-color: #ffffff; color: #212529; text-align: center; }
+        .text-danger { color: #dc3545; font-weight: bold; }
+        .text-success { color: #28a745; font-weight: bold; }
+        
+        /* Contenedores de KPI Cards */
+        .kpi-container { display: flex; gap: 20px; margin-top: 25px; justify-content: space-between; }
+        .card-kpi { flex: 1; padding: 20px; border-radius: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .total-perdida { border-left: 6px solid #dc3545; background-color: #fff5f5; }
+        .total-desconfiguracion { border-left: 6px solid #ffc107; background-color: #fffdf5; }
+        .card-kpi h3 { margin: 0 0 10px 0; font-size: 16px; color: #495057; text-transform: uppercase; }
+        .card-kpi p { margin: 0 0 5px 0; font-size: 28px; font-weight: bold; }
+        .card-kpi small { color: #6c757d; font-size: 12px; }
+    </style>
+</head>
+<body>
+
+<div class="main-container">
+    <h2>🔍 Tablero de Auditoría de Mermas por Corte</h2>
+    <p>Filtrado para el día: <strong>{{ fecha_actual }}</strong></p>
+
+        <!-- Formulario rápido superior con los 3 nuevos campos de auditoría -->
+    <form action="/auditoria/cargar-cortes" method="POST" class="quick-form">
+        <input type="hidden" name="fecha" value="{{ fecha_actual }}">
+        <div>
+            <label>Corte / Variante:</label>
+            <input type="text" name="nombre_corte" placeholder="Ej: VACIO" required>
+        </div>
+        <div>
+            <label>Balanza Carnicero (Kg):</label>
+            <input type="number" step="0.01" name="balanza_carnicero" placeholder="0.00" required>
+        </div>
+        <div>
+            <label>Vendido Sistema (Kg):</label>
+            <input type="number" step="0.01" name="vendido_sistema" placeholder="0.00" required>
+        </div>
+        <div>
+            <label>Precio por Kg ($):</label>
+            <input type="number" step="0.01" name="precio_x_kg" placeholder="0.00" required>
+        </div>
+        
+        <!-- 🆕 NUEVOS CAMPOS AGREGADOS -->
+        <div>
+            <label>Carnicero:</label>
+            <input type="text" name="carnicero" placeholder="Nombre Carnicero" required>
+        </div>
+        <div>
+            <label>Cajera:</label>
+            <input type="text" name="cajera" placeholder="Nombre Cajera" required>
+        </div>
+        <div>
+            <label>Turno:</label>
+            <select name="turno" required>
+                <option value="MAÑANA">Mañana</option>
+                <option value="TARDE">Tarde</option>
+                <option value="NOCHE">Noche</option>
+            </select>
+        </div>
+        
+        <button type="submit" class="btn-add">+ Analizar Corte</button>
+    </form>
+
+
+    <!-- Tabla Maestra de Control -->
+    <table class="table-auditoria">
+        <thead>
+            <tr>
+                <th>Corte de Carne</th>
+                <th>Balanza Real Mostrador</th>
+                <th>Vendido Sistema Caja</th>
+                <th>Estado Diferencia</th>
+                <th>Precio x Kg</th>
+                <th>Impacto Financiero</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for corte in cortes %}
+            <tr>
+                <td><strong>{{ corte.nombre_corte }}</strong></td>
+                <td>{{ corte.balanza_carnicero }} kg</td>
+                <td>{{ corte.vendido_sistema }} kg</td>
+                
+                <!-- Lógica de color de celda según el estado del Stock -->
+                {% if corte.estado_diferencia < 0 %}
+                    <td class="bg-danger-light">{{ corte.estado_diferencia }} kg (FALTANTE)</td>
+                {% elif corte.estado_diferencia > 0 %}
+                    <td class="bg-success-light">+{{ corte.estado_diferencia }} kg (SOBRANTE)</td>
+                {% else %}
+                    <td class="bg-perfect-light">0.00 kg (PERFECTO)</td>
+                {% endif %}
+                
+                <td>${{ "{:,.2f}".format(corte.precio_x_kg) }}</td>
+                
+                <!-- Impacto financiero de la celda -->
+                <td class="{{ 'text-danger' if corte.dinero_perdido < 0 else 'text-success' if corte.dinero_perdido > 0 else '' }}">
+                    ${{ "{:,.2f}".format(corte.dinero_perdido) }}
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="6" style="text-align: center; color: #6c757d; padding: 20px;">No hay registros de auditoría cargados para esta fecha.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <!-- Bloque de Cierre con Algoritmo SUMAR.SI integrado -->
+    <div class="kpi-container">
+        <!-- Fuga real de dinero (Valores negativos aislados) -->
+        <div class="card-kpi total-perdida">
+            <h3>Fuga de Dinero Confirmada (Faltantes)</h3>
+            <p class="text-danger">${{ "{:,.2f}".format(total_fuga) }}</p>
+            <small>Dinero total que el negocio perdió debido a kilos de carne no facturados.</small>
+        </div>
+
+        <!-- Desconfiguración de balanza (Valores positivos aislados) -->
+        <div class="card-kpi total-desconfiguracion">
+            <h3>Desajuste de Facturación (Sobrantes)</h3>
+            <p style="color: #ff9900;">${{ "{:,.2f}".format(errores_tipeo) }}</p>
+            <small>Kilos cobrados de más por errores de código en la caja (No es dinero real en mano).</small>
+        </div>
+    </div>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,464 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<style>
+    body {
+        background-color: #f4f7f6;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+
+    .stock-container {
+        max-width: 1350px;
+        margin: 30px auto;
+        padding: 0 20px;
+    }
+
+    .stock-title {
+        font-size: 26px;
+        font-weight: 700;
+        color: #1e293b;
+        margin-bottom: 25px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    /* 📊 TARJETAS DE ESTADÍSTICAS */
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 20px;
+        margin-bottom: 25px;
+    }
+
+    .stat-card {
+        background: white;
+        padding: 20px;
+        border-radius: 14px;
+        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+        display: flex;
+        align-items: center;
+        gap: 15px;
+    }
+
+    .stat-icon {
+        width: 48px;
+        height: 48px;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 22px;
+    }
+
+    .stat-info h3 {
+        margin: 0;
+        font-size: 14px;
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .stat-info p {
+        margin: 4px 0 0 0;
+        font-size: 22px;
+        font-weight: 700;
+        color: #0f172a;
+    }
+
+    /* 🔍 BARRA DE FILTROS Y BÚSQUEDA */
+    .filter-bar {
+        background: white;
+        padding: 16px 24px;
+        border-radius: 14px;
+        margin-bottom: 25px;
+        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+        display: flex;
+        align-items: center;
+        gap: 20px;
+        flex-wrap: wrap;
+    }
+
+    .filter-group {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .filter-bar label {
+        font-weight: 600;
+        color: #475569;
+        font-size: 15px;
+    }
+
+    .filter-select, .search-input {
+        padding: 10px 16px;
+        border: 1px solid #cbd5e1;
+        border-radius: 10px;
+        background-color: #fff;
+        font-size: 14px;
+        color: #334155;
+        outline: none;
+        transition: all 0.2s;
+    }
+
+    .search-input {
+        min-width: 320px;
+    }
+
+    .filter-select:focus, .search-input:focus {
+        border-color: #0284c7;
+        box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.15);
+    }
+
+    /* 📋 TABLA PREMIUM */
+    .table-responsive {
+        background: white;
+        border-radius: 16px;
+        overflow: hidden;
+        box-shadow: 0 10px 15px -3px rgba(0,0,0,0.05);
+    }
+
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        text-align: left;
+        table-layout: fixed;
+    }
+
+    th:nth-child(1), td:nth-child(1) { width: 10%; }
+    th:nth-child(2), td:nth-child(2) { width: 12%; }
+    th:nth-child(3), td:nth-child(3) { width: 33%; }
+    th:nth-child(4), td:nth-child(4) { width: 13%; }
+    th:nth-child(5), td:nth-child(5) { width: 10%; }
+    th:nth-child(6), td:nth-child(6) { width: 22%; }
+
+    th {
+        background: #0f172a;
+        color: #f8fafc;
+        padding: 16px 12px;
+        font-size: 13px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    td {
+        padding: 12px 12px;
+        border-bottom: 1px solid #f1f5f9;
+        color: #334155;
+        font-size: 14px;
+        vertical-align: middle;
+    }
+
+    tr:hover {
+        background-color: #f8fafc;
+    }
+
+    .input-edit {
+        width: 100%;
+        padding: 9px 10px;
+        border: 1px solid #cbd5e1;
+        border-radius: 8px;
+        font-size: 14px;
+        color: #334155;
+        background-color: #fff;
+        box-sizing: border-box;
+        transition: all 0.2s;
+    }
+
+    /* 🚨 ALERTA PARA STOCK EN CERO */
+    .stock-alert {
+        background-color: #fef2f2 !important;
+        border: 1px solid #fca5a5 !important;
+        color: #991b1b !important;
+    }
+
+    .badge-dept {
+        background: #e0f2fe;
+        color: #0369a1;
+        padding: 6px 10px;
+        border-radius: 8px;
+        font-size: 12px;
+        font-weight: 600;
+        display: inline-block;
+        white-space: nowrap;
+    }
+
+    .badge-empty {
+        background: #fee2e2;
+        color: #991b1b;
+    }
+
+    .actions-group {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        justify-content: flex-start;
+    }
+
+    .btn-action {
+        padding: 8px 10px;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 14px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.2s;
+        text-decoration: none;
+        min-width: 34px;
+        height: 34px;
+        box-sizing: border-box;
+    }
+
+    .btn-update {
+        background: #0284c7;
+        color: white;
+    }
+
+    .btn-update:hover {
+        background: #0369a1;
+    }
+
+    .btn-void {
+        background: #f1f5f9;
+        color: #64748b;
+    }
+
+    .btn-void:hover {
+        background: #e2e8f0;
+    }
+
+    .btn-trash {
+        background: #fff1f2;
+        color: #be123c;
+    }
+
+    .btn-trash:hover {
+        background: #ffe4e6;
+    }
+
+    .back-link {
+        margin-top: 25px;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        text-decoration: none;
+        color: #64748b;
+        font-weight: 600;
+        font-size: 15px;
+    }
+
+    .back-link:hover {
+        color: #0f172a;
+    }
+</style>
+
+<div class="stock-container">
+
+    <h2 class="stock-title">📦 Control de Stock e Inventario</h2>
+
+    <!-- 📊 TARJETAS DE ESTADÍSTICAS -->
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-icon" style="background: #e0f2fe; color: #0369a1;">📋</div>
+            <div class="stat-info">
+                <h3>Total Artículos</h3>
+                <p id="stat-total-items">0</p>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon" style="background: #dcfce7; color: #15803d;">💰</div>
+            <div class="stat-info">
+                <h3>Capital en Góndola</h3>
+                <p id="stat-total-capital">$0,00</p>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon" style="background: #fee2e2; color: #991b1b;">🚨</div>
+            <div class="stat-info">
+                <h3>Faltantes Críticos</h3>
+                <p id="stat-critical-count" style="color: #be123c;">0</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- 🔍 FILTROS Y BUSCADOR -->
+    <div class="filter-bar">
+        <div class="filter-group">
+            <label for="dept-filter">🏢 Sector:</label>
+            <select id="dept-filter" class="filter-select" onchange="applyFilters()">
+                <option value="TODOS">🔍 Todos los Sectores</option>
+                <option value="Agua">Agua</option>
+                <option value="Bebidas">Bebidas</option>
+                <option value="Carnicería">Carnicería</option>
+                <option value="Cigarrillos">Cigarrillos</option>
+                <option value="Fiambrería">Fiambrería</option>
+                <option value="Golosinas">Golosinas</option>
+                <option value="Higiene">Higiene</option>
+                <option value="Librería">Librería</option>
+                <option value="Limpieza">Limpieza</option>
+                <option value="Panadería">Panadería</option>
+                <option value="Sueltos">Sueltos</option>
+                <option value="Verdulería">Verdulería</option>
+                <option value="Otros">Otros</option>
+            </select>
+        </div>
+
+        <div class="filter-group">
+            <label for="search-box">🔍 Buscar:</label>
+            <input type="text" id="search-box" class="search-input" placeholder="Escribí nombre o código..." onkeyup="applyFilters()">
+        </div>
+    </div>
+
+    <!-- CONTENEDOR DE LA TABLA -->
+    <div class="table-responsive">
+        <table id="stock-table">
+            <thead>
+                <tr>
+                    <th>Código</th>
+                    <th>Sector Actual</th>
+                    <th>Descripción del Artículo</th>
+                    <th>Precio ($)</th>
+                    <th>Stock</th>
+                    <th>Gestión de Producto</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in productos %}
+                <!-- 🛡️ Cambiados los índices numéricos por nombres de columna para sqlite3.Row -->
+                <tr class="product-row" data-dept="{{ p.departamento if p.departamento else 'Otros' }}">
+                    
+                    <!-- 1. Código -->
+                    <td class="code-cell" style="font-weight: 600; color: #1e293b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ p.codigo }}</td>
+
+                    <!-- 2. Badge de Sector -->
+                    <td>
+                        {% if p.departamento %}
+                            <span class="badge-dept">{{ p.departamento }}</span>
+                        {% else %}
+                            <span class="badge-dept badge-empty">Sin asignar</span>
+                        {% endif %}
+                    </td>
+
+                    <!-- FORMULARIO DE ENVÍO -->
+                    <form method="POST" id="form-{{ p.id }}">
+                        
+                        <!-- 3. Input Descripción -->
+                        <td>
+                            <input type="text" name="descripcion" class="input-edit desc-cell" value="{{ p.descripcion }}">
+                        </td>
+
+                        <!-- 4. Input Precio -->
+                        <td>
+                            <input type="number" step="0.01" name="precio" class="input-edit price-cell" value="{{ p.precio }}" style="font-weight: 600; padding: 9px 6px;">
+                        </td>
+
+                        <!-- 5. Input Stock (Mapeo corregido seguro contra Row) -->
+                        <td>
+                            <input type="number" name="stock" class="input-edit stock-cell {% if p.stock <= 0 %}stock-alert{% endif %}" value="{{ p.stock }}" style="text-align: center; font-weight: 600; padding: 9px 4px;">
+                            
+                            <input type="hidden" name="id" value="{{ p.id }}">
+                            <select name="departamento" id="select-hidden-{{ p.id }}" style="display:none;">
+                                <option value="{{ p.departamento if p.departamento else 'Otros' }}" selected>{{ p.departamento if p.departamento else 'Otros' }}</option>
+                            </select>
+                        </td>
+                    </form>
+
+                    <!-- 6. Acciones -->
+                    <td>
+                        <div class="actions-group">
+                            <select class="input-edit" onchange="document.getElementById('select-hidden-{{ p.id }}').value = this.value;" style="width: 105px; font-size: 13px; padding: 7px 6px; height: 34px;">
+                                <option value="Otros" {% if p.departamento == 'Otros' or not p.departamento %}selected{% endif %}>Otros</option>
+                                <option value="Agua" {% if p.departamento == 'Agua' %}selected{% endif %}>Agua</option>
+                                <option value="Bebidas" {% if p.departamento == 'Bebidas' %}selected{% endif %}>Bebidas</option>
+                                <option value="Carnicería" {% if p.departamento == 'Carnicería' %}selected{% endif %}>Carnicería</option>
+                                <option value="Cigarrillos" {% if p.departamento == 'Cigarrillos' %}selected{% endif %}>Cigarrillos</option>
+                                <option value="Fiambrería" {% if p.departamento == 'Fiambrería' %}selected{% endif %}>Fiambrería</option>
+                                <option value="Golosinas" {% if p.departamento == 'Golosinas' %}selected{% endif %}>Golosinas</option>
+                                <option value="Higiene" {% if p.departamento == 'Higiene' %}selected{% endif %}>Higiene</option>
+                                <option value="Librería" {% if p.departamento == 'Librería' %}selected{% endif %}>Librería</option>
+                                <option value="Limpieza" {% if p.departamento == 'Limpieza' %}selected{% endif %}>Limpieza</option>
+                                <option value="Panadería" {% if p.departamento == 'Panadería' %}selected{% endif %}>Panadería</option>
+                                <option value="Sueltos" {% if p.departamento == 'Sueltos' %}selected{% endif %}>Sueltos</option>
+                                <option value="Verdulería" {% if p.departamento == 'Verdulería' %}selected{% endif %}>Verdulería</option>
+                            </select>
+
+                            <button class="btn-action btn-update" type="submit" form="form-{{ p.id }}" title="Guardar cambios">
+                                💾
+                            </button>
+
+                            <a class="btn-action btn-void" href="/stock/vaciar/{{ p.id }}" onclick="return confirm('¿Vaciar stock?')" title="Vaciar Unidades">
+                                🗑️
+                            </a>
+
+                            <a class="btn-action btn-trash" href="/stock/eliminar/{{ p.id }}" onclick="return confirm('⚠️ ¿Eliminar producto por completo?')" title="Eliminar Producto">
+                                ❌
+                            </a>
+                        </div>
+                    </td>
+
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <a class="back-link" href="/dashboard">⬅️ Volver al panel de control</a>
+
+</div>
+
+<script>
+function calculateStats() {
+    const rows = document.querySelectorAll(".product-row");
+    let totalItems = 0;
+    let totalCapital = 0;
+    let criticalCount = 0;
+
+    rows.forEach(row => {
+        if (row.style.display !== "none") {
+            totalItems++;
+            const price = parseFloat(row.querySelector(".price-cell").value) || 0;
+            const stock = parseInt(row.querySelector(".stock-cell").value) || 0;
+            totalCapital += (price * stock);
+            if (stock <= 0) { criticalCount++; }
+        }
+    });
+
+    document.getElementById("stat-total-items").textContent = totalItems;
+    document.getElementById("stat-total-capital").textContent = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(totalCapital);
+    document.getElementById("stat-critical-count").textContent = criticalCount;
+}
+
+function applyFilters() {
+    const selectedDept = document.getElementById("dept-filter").value;
+    const searchText = document.getElementById("search-box").value.toLowerCase().trim();
+    const rows = document.querySelectorAll(".product-row");
+
+    rows.forEach(row => {
+        const rowDept = row.getAttribute("data-dept");
+        const rowCode = row.querySelector(".code-cell").textContent.toLowerCase();
+        const rowDesc = row.querySelector(".desc-cell").value.toLowerCase();
+
+        const matchesDept = (selectedDept === "TODOS" || rowDept === selectedDept);
+        const matchesSearch = (rowCode.includes(searchText) || rowDesc.includes(searchText));
+
+        if (matchesDept && matchesSearch) {
+            row.style.display = "";
+        } else {
+            row.style.display = "none";
+        }
+    });
+
+    calculateStats();
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+    calculateStats();
+});
+</script>
+
+{% endblock %}

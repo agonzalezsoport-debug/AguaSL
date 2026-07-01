@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card" style="max-width: 750px; margin: 30px auto; padding: 25px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
+    <h2 style="color: #1e293b; margin-bottom: 5px;">🎁 Crear Combo u Oferta Especial</h2>
+    <p style="color: var(--muted); font-size: 14px; margin-bottom: 25px;">Agrupá múltiples productos individuales bajo un precio promocional único.</p>
+    
+    <form action="/admin/crear_promocion" method="POST">
+        <div style="margin-bottom: 15px;">
+            <label style="font-weight: 600; color: #334155;">Nombre de la Oferta / Promo:</label>
+            <input type="text" name="nombre" required placeholder="Ej: Pack Fin de Semana" style="width:100%; padding:10px; margin-top:5px; border: 1px solid #cbd5e1; border-radius: 6px;">
+        </div>
+        <div style="margin-bottom: 15px;">
+            <label style="font-weight: 600; color: #334155;">Descripción / Notas:</label>
+            <textarea name="descripcion" placeholder="Ej: Incluye 2 Aguas de 20L y 1 Dispensador" style="width:100%; padding:10px; margin-top:5px; border: 1px solid #cbd5e1; border-radius: 6px; height: 60px; resize: none;"></textarea>
+        </div>
+        <div style="margin-bottom: 25px;">
+            <label style="font-weight: 600; color: #334155;">Precio Especial del Combo ($):</label>
+            <input type="number" step="0.01" name="precio" required placeholder="0.00" style="width:100%; padding:10px; margin-top:5px; border: 1px solid #cbd5e1; border-radius: 6px;">
+        </div>
+
+        <h4 style="color: #475569; border-bottom: 2px solid #f1f5f9; padding-bottom: 8px; margin-bottom: 15px;">📦 Productos incluidos en este Combo:</h4>
+        
+        <div id="contenedor-productos">
+            <!-- Primera fila de insumos por defecto -->
+            <div class="fila-producto" style="display: flex; gap: 12px; margin-bottom: 12px; align-items: center;">
+                <select name="productos[]" required style="flex: 3; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; background: white;">
+                    <option value="">-- Seleccioná un producto --</option>
+                    {% for p in productos %}
+                        {# Blindaje total: detecta si es diccionario/Row o una tupla de Render posicional #}
+                        {% if p is mapping or hasattr(p, 'keys') %}
+                            <option value="{{ p.id }}">{{ p.descripcion }} (Stock actual: {{ p.stock }})</option>
+                        {% else %}
+                            <option value="{{ p[0] }}">{{ p[1] }} (Stock actual: {{ p[2] }})</option>
+                        {% endif %}
+                    {% endfor %}
+                </select>
+                <div style="flex: 1; display: flex; align-items: center; gap: 5px;">
+                    <label style="font-size: 13px; color: #64748b;">Cant:</label>
+                    <input type="number" name="cantidades[]" min="1" value="1" required style="width:100%; padding:10px; border: 1px solid #cbd5e1; border-radius: 6px; text-align: center;">
+                </div>
+                <button type="button" onclick="eliminarFila(this)" style="background:#ef4444; color:white; border:none; padding:10px 14px; border-radius:6px; cursor:pointer; font-weight: bold;">❌</button>
+            </div>
+        </div>
+
+        <button type="button" onclick="agregarFila()" style="background:#22c55e; color:white; border:none; padding:10px 16px; border-radius:6px; cursor:pointer; font-weight: bold; margin-bottom: 30px; display: inline-flex; align-items: center; gap: 5px;">
+            ➕ Agregar otro producto
+        </button>
+        
+        <div style="border-top: 1px solid #e2e8f0; padding-top: 20px; text-align: right;">
+            <button type="submit" style="background:#2563eb; color:white; border:none; padding:12px 30px; border-radius:6px; font-weight:bold; cursor:pointer; font-size:15px; box-shadow: 0 4px 6px rgba(37, 99, 235, 0.2);">
+                💾 Guardar Oferta Completa
+            </button>
+        </div>
+    </form>
+</div>
+
+<script>
+function agregarFila() {
+    let contenedor = document.getElementById("contenedor-productos");
+    // Clonamos de forma exacta la estructura de la primera fila
+    let primeraFila = contenedor.querySelector(".fila-producto");
+    let nuevaFila = primeraFila.cloneNode(true);
+    
+    // Reseteamos los campos internos clonados para que nazcan vacíos
+    nuevaFila.querySelector("select").value = "";
+    nuevaFila.querySelector("input[type='number']").value = "1";
+    contenedor.appendChild(nuevaFila);
+}
+
+function eliminarFila(boton) {
+    let contenedor = document.getElementById("contenedor-productos");
+    if (contenedor.querySelectorAll(".fila-producto").length > 1) {
+        boton.closest(".fila-producto").remove();
+    } else {
+        alert("⚠️ La oferta debe tener como mínimo un producto incorporado.");
+    }
+}
+</script>
+{% endblock %}

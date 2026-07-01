@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container" style="max-width: 600px; margin: auto; padding: 20px;">
+ <h2 style="text-align: center; color: #333;"> Agregar Nuevo Producto</h2> 📦
+ <div class="card" style="padding: 25px; border-radius: 20px; background: #fff; box-shadow: 0 10px 30px rgba(0,0,0,0.1); border: none;">
+ 
+ <form method="POST" enctype="multipart/form-data">
+ 
+ <!-- ZONA DE FOTO --> 🖼
+ <div style="margin-bottom: 25px; text-align: center;">
+ <label style="display: block; margin-bottom: 10px; font-weight: bold; color: #555;">Imagen del Producto:</label>
+ 
+ <div id="image-preview-container" onclick="document.getElementById('file-input').click()" 
+ style="width: 100%; height: 200px; border: 2px dashed #cbd5e0; border-radius: 15px; display: flex; align-items: center; justify-content: center; cursor: pointer; position: relative; overflow: hidden; background: #f7fafc; transition: 0.3s;">
+ 
+ <div id="placeholder-content">
+ <div style="font-size: 3rem;">📸</div>
+ <p style="margin: 5px 0; color: #718096; font-size: 0.9em;">Click para subir o arrastrar foto</p>
+ <small style="color: #a0aec0;">JPG, PNG, WEBP...</small>
+ </div>
+ <img id="image-preview" src="#" alt="Vista previa" style="display: none; width: 100%; height: 100%; object-fit: contain;">
+ </div>
+ 
+ <input type="file" name="foto" id="file-input" accept="image/*" style="display: none;" onchange="previewImage(event)">
+ </div>
+
+ <div style="margin-bottom: 15px;">
+ <label style="display: block; margin-bottom: 5px; font-weight: bold;">Código del Producto:</label>
+ <input type="text" name="codigo" placeholder="Ej: 20L" required 
+ style="width: 100%; padding: 12px; border: 1px solid #e2e8f0; border-radius: 10px; font-size: 1em; outline: none; transition: 0.3s;">
+ </div>
+
+ <div style="margin-bottom: 15px;">
+ <label style="display: block; margin-bottom: 5px; font-weight: bold;">Descripción:</label>
+ <input type="text" name="descripcion" placeholder="Nombre del producto" required 
+ style="width: 100%; padding: 12px; border: 1px solid #e2e8f0; border-radius: 10px; font-size: 1em; outline: none;">
+ </div>
+
+ <div class="grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+ <div>
+ <label style="display: block; margin-bottom: 5px; font-weight: bold;">Litros:</label>
+ <input type="number" name="litros" placeholder="0" required style="width: 100%; padding: 12px; border: 1px solid #e2e8f0; border-radius: 10px;">
+ </div>
+ <div>
+ <label style="display: block; margin-bottom: 5px; font-weight: bold;">Stock Inicial:</label>
+ <input type="number" name="stock" placeholder="0" required style="width: 100%; padding: 12px; border: 1px solid #e2e8f0; border-radius: 10px;">
+ </div>
+ </div>
+
+ <!-- 📈 NUEVA SECCIÓN DE COSTOS Y CÁLCULO DE MARGEN AUTOMÁTICO -->
+ <div class="grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+ <div>
+ <label style="display: block; margin-bottom: 5px; font-weight: bold; color: #1e293b;">Precio Costo ($):</label>
+ <input type="number" step="0.01" id="costo" name="costo" placeholder="0.00" required oninput="calcularPrecioVentaAutomático()" style="width: 100%; padding: 12px; border: 1px solid #e2e8f0; border-radius: 10px; background: #fffbeb;">
+ </div>
+ <div>
+ <label style="display: block; margin-bottom: 5px; font-weight: bold; color: #1e293b;">Ganancia (%):</label>
+ <input type="number" step="0.1" id="ganancia_pct" name="ganancia_pct" value="30" required oninput="calcularPrecioVentaAutomático()" style="width: 100%; padding: 12px; border: 1px solid #e2e8f0; border-radius: 10px; background: #f0fdf4;">
+ </div>
+ </div>
+
+ <div class="grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+ <div>
+ <label style="display: block; margin-bottom: 5px; font-weight: bold; color: #1e293b;">Tasa IVA (%):</label>
+ <select id="iva_pct" name="iva_pct" onchange="calcularPrecioVentaAutomático()" style="width: 100%; padding: 12px; border: 1px solid #e2e8f0; border-radius: 10px; background: white; height: 45px;">
+ <option value="21">21.0% (General)</option>
+ <option value="10.5">10.5% (Reducido)</option>
+ <option value="0">0.0% (Exento)</option>
+ </select>
+ </div>
+ <div>
+ <label style="display: block; margin-bottom: 5px; font-weight: bold; color: #2563eb;">Precio Venta sugerido ($):</label>
+ <!-- readonly para proteger el cálculo e input hidden para transmitirlo en el POST -->
+ <input type="number" step="0.01" id="precio_visible" placeholder="0.00" readonly style="width: 100%; padding: 12px; border: 1px solid #bfdbfe; border-radius: 10px; background: #eff6ff; font-weight: bold; color: #1e40af;">
+ <input type="hidden" name="precio" id="precio">
+ </div>
+ </div>
+
+ <div style="margin-bottom: 20px;">
+ <label style="display: block; margin-bottom: 5px; font-weight: bold;">Departamento:</label> 📂
+ <select name="departamento" required style="width: 100%; padding: 12px; border: 1px solid #e2e8f0; border-radius: 10px; background: white;">
+ <option value="">Seleccionar</option>
+ <option value="Agua">Agua</option>
+ <option value="Bebidas">Bebidas</option>
+ <option value="Carnicería">Carnicería</option>
+ <option value="Cigarrillos">Cigarrillos</option>
+ <option value="Fiambrería">Fiambrería</option>
+ <option value="Golosinas">Golosinas</option>
+ <option value="Higiene">Higiene</option>
+ <option value="Librería">Librería</option>
+ <option value="Limpieza">Limpieza</option>
+ <option value="Panadería">Panadería</option>
+ <option value="Sueltos">Sueltos</option>
+ <option value="Verdulería">Verdulería</option>
+ <option value="Otros">Otros</option>
+ </select>
+ </div>
+
+ <button type="submit" class="btn success" 
+ style="width: 100%; padding: 16px; font-size: 1.1em; border-radius: 12px; cursor: pointer; margin-top: 10px; border: none; background: linear-gradient(135deg, #28a745, #218838); color: white; font-weight: bold; box-shadow: 0 4px 15px rgba(40,167,69,0.3); transition: 0.3s;">
+ Guardar Producto ➕
+ </button>
+ </form>
+ </div>
+ <div style="margin-top: 25px; text-align: center;">
+ <a href="/dashboard_cajero" style="text-decoration: none; color: #718096; font-weight: 600;"> Volver al Panel</a> ⬅
+ </div>
+</div>
+
+<script>
+// ✨ FUNCIÓN MATEMÁTICA COHESIVA PARA PRECIOS DE VENTA AUTOMÁTICOS
+function calcularPrecioVentaAutomático() {
+ let costo = parseFloat(document.getElementById('costo').value || 0);
+ let gananciaPct = parseFloat(document.getElementById('ganancia_pct').value || 0);
+ let ivaPct = parseFloat(document.getElementById('iva_pct').value || 0);
+
+ // 1. Aplicamos el margen de utilidad sobre el costo base
+ let costoConGanancia = costo + (costo * gananciaPct / 100);
+
+ // 2. Sobre el costo adicionamos el impuesto al valor agregado (IVA)
+ let precioVentaFinal = costoConGanancia + (costoConGanancia * ivaPct / 100);
+
+ // 3. Sincronizamos los inputs visuales y ocultos para la persistencia en Flask
+ document.getElementById('precio_visible').value = precioVentaFinal.toFixed(2);
+ document.getElementById('precio').value = precioVentaFinal.toFixed(2);
+}
+
+function previewImage(event) {
+ const reader = new FileReader();
+ const preview = document.getElementById('image-preview');
+ const placeholder = document.getElementById('placeholder-content');
+ const container = document.getElementById('image-preview-container');
+ reader.onload = function(){
+ if(reader.readyState === 2){
+ preview.src = reader.result;
+ preview.style.display = 'block';
+ placeholder.style.display = 'none';
+ container.style.borderColor = '#28a745';
+ container.style.background = '#fff';
+ }
+ }
+ reader.readAsDataURL(event.target.files[0]);
+}
+
+const dropZone = document.getElementById('image-preview-container');
+dropZone.onmouseover = () => dropZone.style.backgroundColor = '#edf2f7';
+dropZone.onmouseout = () => dropZone.style.backgroundColor = '#f7fafc';
+</script>
+{% endblock %}

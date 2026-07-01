@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="card">
+<h2>📝 Registro de Cliente</h2>
+
+<form method="POST">
+
+    <input name="nombre" placeholder="Nombre" required>
+
+    <input name="telefono" placeholder="Teléfono" required>
+
+    <input name="direccion" placeholder="Dirección" required>
+
+    <input type="password" name="password" placeholder="Contraseña" required>
+
+    <button>Registrarse</button>
+
+</form>
+
+<p class="muted">
+¿Ya tenés cuenta? <a href="/login_cliente">Iniciar sesión</a>
+</p>
+
+</div>
+
+{% endblock %}

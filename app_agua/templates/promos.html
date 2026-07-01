@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<h2>Promos 🎁</h2>
+
+<!-- ================= CREAR PROMO ================= -->
+{% if session.get("admin") %}
+
+<div class="card">
+    <form method="POST" action="/promos/agregar">
+
+        <input name="nombre" placeholder="Nombre promo" required>
+        <input name="descripcion" placeholder="Descripción">
+        <input name="precio" placeholder="Precio final" required>
+
+        <h3>📦 Seleccionar productos</h3>
+
+        {% for p in productos %}
+        <div style="margin-bottom:10px;">
+            
+            <label>
+                <input type="checkbox" name="productos[]" value="{{ p[0] }}">
+                <b>{{ p[1] }}</b>
+            </label>
+
+            <span>(Stock: {{ p[3] }})</span>
+
+            <input type="number"
+                   name="cantidad_{{ p[0] }}"
+                   placeholder="Cant."
+                   min="1"
+                   style="width:70px;">
+
+        </div>
+        {% endfor %}
+
+        <button type="submit">➕ Crear Promo</button>
+
+    </form>
+</div>
+
+{% endif %}
+
+<!-- ================= LISTADO PROMOS ================= -->
+{% for p in promos %}
+<div class="card">
+
+    <b>{{ p[1] }}</b><br>
+    📝 {{ p[2] }}<br>
+    💲 ${{ p[3] }}
+
+    {% if session.get("admin") %}
+
+    <!-- EDITAR -->
+    <form method="GET" action="/promos/editar/{{ p[0] }}" style="display:inline;">
+        <button type="submit" class="btn-editar">✏️ Editar</button>
+    </form>
+
+    <!-- ELIMINAR -->
+    <form method="POST" action="/promos/eliminar/{{ p[0] }}" style="display:inline;">
+        <button type="submit" class="btn-eliminar"
+                onclick="return confirm('¿Eliminar esta promo?')">
+            🗑 Eliminar
+        </button>
+    </form>
+
+    {% endif %}
+
+</div>
+{% endfor %}
+
+{% endblock %}

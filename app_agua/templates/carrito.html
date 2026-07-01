@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block content %}
+
+<!-- 1. Recursos de Mapa -->
+<link rel="stylesheet" href="https://unpkg.com" />
+<script src="https://unpkg.com"></script>
+
+<div class="container" style="max-width: 600px; margin: auto; padding: 20px;">
+    <h2 style="text-align: center; margin-bottom: 30px;">🛍️ Mi Pedido</h2>
+
+    {% if carrito %}
+        <div class="card" style="background: white; border-radius: 20px; padding: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); margin-bottom: 20px;">
+            {% for item in carrito %}
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 15px 0; border-bottom: 1px solid #eee;">
+                <div>
+                    <strong style="font-size: 1.1em; color: #333;">{{ item.nombre }}</strong><br>
+                    <span style="color: #888;">${{ "%.2f"|format(item.precio) }} x {{ item.cantidad }}</span>
+                </div>
+                <strong style="color: #28a745;">${{ "%.2f"|format(item.precio * item.cantidad) }}</strong>
+            </div>
+            {% endfor %}
+
+            <div style="margin-top: 25px; padding-top: 20px; border-top: 2px solid #f0f0f0; display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-size: 1.2em; font-weight: bold; color: #555;">Total a pagar:</span>
+                <span style="font-size: 1.8em; font-weight: 800; color: #007bff;">${{ "%.2f"|format(total) }}</span>
+            </div>
+        </div>
+
+        <!-- 📍 SECCIÓN DE UBICACIÓN -->
+        <div class="card" style="background: white; border-radius: 20px; padding: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); margin-bottom: 20px;">
+            <p style="font-weight: bold; margin-bottom: 10px;">📍 Confirmar dirección de entrega:</p>
+            
+            <div id="map-carrito" style="height: 200px; width: 100%; border-radius: 12px; border: 1px solid #ddd; background: #eee; margin-bottom: 10px;"></div>
+            
+            <button type="button" onclick="localizarEnCarrito()" class="btn" style="width: 100%; background: #007bff; color: white; border: none; padding: 10px; border-radius: 10px; cursor: pointer;">
+                📡 Usar mi ubicación actual
+            </button>
+            <p id="status-carrito" style="font-size: 0.8em; text-align: center; color: #666; margin-top: 8px;">Mové el marcador rojo hasta tu casa</p>
+        </div>
+
+        <div style="margin-top: 30px; display: flex; flex-direction: column; gap: 15px;">
+            <form action="/pedidos_cliente/agregar" method="POST">
+                <input type="hidden" name="promo_id" value="PEDIDO_TIENDA"> 
+                
+                <!-- CAMPOS GPS QUE FALTABAN -->
+                <input type="hidden" name="latitud" id="lat-carrito">
+                <input type="hidden" name="longitud" id="lng-carrito">
+                
+                <label style="display: block; font-weight: bold; margin-bottom: 5px;">📅 Fecha de entrega:</label>
+                <input type="date" name="fecha" required style="width: 100%; padding: 12px; border-radius: 10px; border: 1px solid #ccc; margin-bottom: 20px;">
+
+                <button type="submit" class="btn success" style="width: 100%; padding: 18px; font-size: 1.2em; font-weight: bold; border-radius: 15px; border: none; background: #28a745; color: white; cursor: pointer;">
+                    🚀 Confirmar y Enviar Pedido
+                </button>
+            </form>
+
+            <a href="/carrito/vaciar" style="text-align: center; color: #dc3545; text-decoration: none; font-weight: bold;">🗑️ Vaciar Carrito</a>
+            <a href="/tienda" style="text-align: center; color: #666; text-decoration: none;">⬅️ Seguir comprando</a>
+        </div>
+
+    {% else %}
+        <div style="text-align: center; padding: 50px 20px;">
+            <div style="font-size: 5rem; margin-bottom: 20px;">🛒</div>
+            <h3>Tu carrito está vacío</h3>
+            <a href="/tienda" class="btn" style="display: inline-block; margin-top: 20px; background: #007bff; color: white; padding: 12px 30px; border-radius: 50px; text-decoration: none; font-weight: bold;">Ir a la Tienda</a>
+        </div>
+    {% endif %}
+</div>
+
+<script>
+let mapaCarrito;
+let marcadorCarrito;
+
+function initMapa() {
+    const centro = [-34.6037, -58.3816];
+    mapaCarrito = L.map('map-carrito').setView(centro, 13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapaCarrito);
+    marcadorCarrito = L.marker(centro, {draggable: true}).addTo(mapaCarrito);
+
+    marcadorCarrito.on('dragend', function(e) {
+        let pos = e.target.getLatLng();
+        document.getElementById('lat-carrito').value = pos.lat;
+        document.getElementById('lng-carrito').value = pos.lng;
+    });
+
+    setTimeout(() => { mapaCarrito.invalidateSize(); }, 400);
+}
+
+function localizarEnCarrito() {
+    const status = document.getElementById('status-carrito');
+    status.innerText = "🛰️ Localizando...";
+    navigator.geolocation.getCurrentPosition(function(pos) {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        document.getElementById('lat-carrito').value = lat;
+        document.getElementById('lng-carrito').value = lng;
+        mapaCarrito.setView([lat, lng], 17);
+        marcadorCarrito.setLatLng([lat, lng]);
+        status.innerText = "✅ Ubicación fijada";
+    }, function() {
+        status.innerText = "❌ No se pudo obtener GPS. Marcá el mapa a mano.";
+    });
+}
+
+document.addEventListener("DOMContentLoaded", initMapa);
+</script>
+
+{% endblock %}

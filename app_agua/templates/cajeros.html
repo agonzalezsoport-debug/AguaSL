@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="container" style="max-width: 1000px; padding: 25px 15px;">
+    
+    <!-- Cabecera Premium de Gestión -->
+    <div style="background: linear-gradient(135deg, #1e293b, #020617); padding: 25px; border-radius: var(--radius); margin-bottom: 30px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 10px 30px rgba(0,0,0,0.15); position: relative; overflow: hidden;">
+        <div style="z-index: 2;">
+            <div style="display: flex; gap: 15px; align-items: center;">
+                <a href="/dashboard" class="btn-volver" style="margin: 0; padding: 8px 16px; text-decoration: none;">⬅ Volver</a>
+                <h2 style="margin: 0; color: white; font-size: 1.8rem; font-weight: 800; letter-spacing: -0.5px;">👨‍💼 Gestión de Cajeros</h2>
+            </div>
+            <p style="margin: 8px 0 0 0; color: #94a3b8; font-size: 0.95rem;">Administración de credenciales, roles de seguridad y asignación de permisos de acceso</p>
+        </div>
+        <div style="z-index: 2;">
+            <a href="/crear_cajero" class="btn-guardar" style="display: inline-block; padding: 12px 20px; border-radius: 12px; text-decoration: none; color: white; font-weight: bold; box-shadow: 0 4px 15px rgba(34, 167, 69, 0.3);">
+                ➕ Nuevo Cajero
+            </a>
+        </div>
+        <!-- Toque estético de fondo transparente -->
+        <div style="position: absolute; right: -20px; bottom: -30px; font-size: 8rem; opacity: 0.04; user-select: none;">🛡️</div>
+    </div>
+
+    <!-- Buscador Instantáneo en Pantalla -->
+    <div style="margin-bottom: 25px;">
+        <input type="text" id="buscadorUsuarios" onkeyup="filtrarUsuarios()" placeholder="🔍 Escribí un nombre de usuario para buscar en el personal..." style="padding: 14px 20px; font-size: 1rem; border-radius: 12px; background: #ffffff; box-shadow: 0 4px 15px rgba(0,0,0,0.02); width: 100%; box-sizing: border-box; border: 1px solid #e2e8f0; outline: none; transition: 0.2s;">
+    </div>
+
+    <!-- Módulo Central de Tabla (Con el efecto Glow de tu CSS) -->
+    <div class="card" style="padding: 25px; border-radius: var(--radius); overflow: hidden;">
+        
+        <div style="border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; background: #f8fafc; z-index: 2; position: relative;">
+            <table id="tablaCajeros" style="width: 100%; border-collapse: collapse; font-size: 0.95rem;">
+                <thead>
+                    <tr style="background: #1f2937; color: white;">
+                        <th style="padding: 15px; text-align: left; font-weight: 600; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px; width: 80px;">ID</th>
+                        <th style="padding: 15px; text-align: left; font-weight: 600; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px;">Usuario / Operario</th>
+                        <th style="padding: 15px; text-align: center; font-weight: 600; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px; width: 150px;">Rol de Seguridad</th>
+                        <th style="padding: 15px; text-align: right; font-weight: 600; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px; width: 220px;">Acciones Autorizadas</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for c in cajeros %}
+                    <tr class="fila-usuario" style="border-bottom: 1px solid #edf2f7; background: white; transition: background 0.2s;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='white'">
+                        
+                        <!-- Columna ID -->
+                        <td style="padding: 15px;">
+                            <div style="background: #e2e8f0; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border-radius: 50%; font-size: 0.8rem; font-weight: bold; color: #475569;">
+                                {{ c[0] }}
+                            </div>
+                        </td>
+                        
+                        <!-- Columna Nombre -->
+                        <td class="nombre-usuario" style="padding: 15px;">
+                            <strong style="color: var(--text); font-size: 1.05rem;">{{ c[1] }}</strong>
+                        </td>
+                        
+                        <!-- Columna Rol (Badges Estilizados) -->
+                        <td style="padding: 15px; text-align: center;">
+                            {% if c[2]|lower == 'admin' %}
+                                <span class="estado entregado" style="padding: 6px 14px; font-size: 0.75rem; border-radius: 8px; font-weight: 800; background: #e0f2fe; color: #0369a1; text-transform: uppercase; letter-spacing: 0.5px;">⚙️ Admin</span>
+                            {% else %}
+                                <span class="estado pendiente" style="padding: 6px 14px; font-size: 0.75rem; border-radius: 8px; font-weight: 800; background: #fef3c7; color: #b45309; text-transform: uppercase; letter-spacing: 0.5px;">👤 Cajero</span>
+                            {% endif %}
+                        </td>
+                        
+                        <!-- Columna Acciones -->
+                        <td style="padding: 15px;">
+                            <div style="display: flex; gap: 10px; justify-content: flex-end; align-items: center;">
+                                <a href="/permisos_cajero/{{ c[0] }}" class="btn-editar" style="display: flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 8px; text-decoration: none; color: white; font-size: 0.85rem; font-weight: bold;">
+                                    🔐 Permisos
+                                </a>
+                                <a href="/eliminar_cajero/{{ c[0] }}" class="btn-eliminar" style="display: flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 8px; text-decoration: none; color: white; font-size: 1rem;" onclick="return confirm('¿Estás seguro de que deseas eliminar permanentemente a este usuario?')">
+                                    🗑️
+                                </a>
+                            </div>
+                        </td>
+
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+    </div>
+</div>
+
+<!-- Lógica del Buscador en Vivo -->
+<script>
+function filtrarUsuarios() {
+    const filtro = document.getElementById("buscadorUsuarios").value.toLowerCase();
+    const filas = document.querySelectorAll(".fila-usuario");
+
+    filas.forEach(fila => {
+        const nombreText = fila.querySelector(".nombre-usuario").textContent.toLowerCase();
+        fila.style.display = nombreText.includes(filtro) ? "" : "none";
+    });
+}
+</script>
+
+{% endblock %}

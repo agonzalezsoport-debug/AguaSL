@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<style>
+    .create-container {
+        max-width: 450px;
+        margin: 40px auto;
+        padding: 20px;
+    }
+
+    /* 🔙 BOTON VOLVER */
+    .btn-volver {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        background: none;
+        color: #6b7280;
+        border: 1px solid #e5e7eb;
+        padding: 10px 16px;
+        border-radius: 12px;
+        cursor: pointer;
+        font-weight: 600;
+        text-decoration: none;
+        transition: 0.3s;
+        margin-bottom: 20px;
+    }
+
+    .btn-volver:hover {
+        background: #f9fafb;
+        color: #111827;
+        border-color: #d1d5db;
+    }
+
+    /* 📦 CARD */
+    .card-create {
+        background: white;
+        padding: 35px;
+        border-radius: 20px;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.08);
+        text-align: center;
+    }
+
+    .card-create h2 {
+        margin-top: 0;
+        margin-bottom: 25px;
+        color: #1f2937;
+        font-size: 1.5rem;
+    }
+
+    /* 🧾 FORM */
+    .form-modern {
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+    }
+
+    .input-group {
+        text-align: left;
+    }
+
+    .input-group label {
+        display: block;
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: #4b5563;
+        margin-bottom: 6px;
+        margin-left: 4px;
+    }
+
+    .form-modern input {
+        width: 100%;
+        padding: 12px 15px;
+        border: 2px solid #f3f4f6;
+        border-radius: 12px;
+        font-size: 1rem;
+        transition: 0.3s;
+        outline: none;
+        box-sizing: border-box; /* Asegura que el padding no rompa el ancho */
+    }
+
+    .form-modern input:focus {
+        border-color: #2563eb;
+        background: #f0f7ff;
+    }
+
+    /* 🔵 BOTON CREAR */
+    .btn-submit {
+        background: #2563eb;
+        color: white;
+        border: none;
+        padding: 14px;
+        border-radius: 12px;
+        cursor: pointer;
+        font-weight: bold;
+        font-size: 1rem;
+        transition: 0.3s;
+        margin-top: 10px;
+        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);
+    }
+
+    .btn-submit:hover {
+        background: #1d4ed8;
+        transform: translateY(-2px);
+        box-shadow: 0 6px 15px rgba(37, 99, 235, 0.3);
+    }
+
+    .icon-header {
+        font-size: 3rem;
+        margin-bottom: 10px;
+        display: block;
+    }
+</style>
+
+<div class="create-container">
+    
+    <a href="javascript:history.back()" class="btn-volver">
+        <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M15 19l-7-7 7-7"></path></svg>
+        Volver
+    </a>
+
+    <div class="card-create">
+        <span class="icon-header">👤</span>
+        <h2>Nuevo Cajero</h2>
+
+        <form method="POST" class="form-modern">
+            
+            <div class="input-group">
+                <label>Nombre de Usuario</label>
+                <input name="nombre" placeholder="Ej: JuanPerez" required autocomplete="off">
+            </div>
+
+            <div class="input-group">
+                <label>Contraseña de Acceso</label>
+                <input name="password" type="password" placeholder="••••••••" required>
+            </div>
+
+            <button type="submit" class="btn-submit">
+                ➕ Crear Cuenta
+            </button>
+
+        </form>
+    </div>
+</div>
+
+{% endblock %}

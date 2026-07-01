@@ -1,0 +1,183 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="tienda-container" style="max-width: 1200px; margin: auto; padding: 20px;">
+    
+    <!-- CABECERA TIENDA -->
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px;">
+        <h2 style="font-weight: 800; color: #333;">🛒 Tienda Online</h2>
+        <a href="/carrito" class="btn-carrito-fijo">
+            <span>Ver mi pedido</span> 🛍️
+        </a>
+    </div>
+
+    <!-- FILTROS POR DEPARTAMENTO -->
+    <div class="filtros" style="margin-bottom: 25px; display: flex; gap: 10px; overflow-x: auto; padding-bottom: 10px;">
+        <button class="badge-filter active">Todos</button>
+        <button class="badge-filter">Agua</button>
+        <button class="badge-filter">Sodas</button>
+        <button class="badge-filter">Accesorios</button>
+    </div>
+
+    <!-- REJILLA DE PRODUCTOS -->
+    <div class="productos-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 25px;">
+        
+        {% for p in productos %}
+        <div class="producto-card-tienda">
+            
+            <!-- 🖼️ IMAGEN DEL PRODUCTO -->
+            <div class="foto-wrapper">
+                {% if p[8] %} 
+                    <img src="/static/productos/{{ p[8] }}" alt="{{ p[1] }}" class="img-real">
+                {% else %}
+                    <div class="emoji-fallback">
+                        {% if 'Agua' in p[1] %}💧{% elif 'Soda' in p[1] %}🍾{% else %}📦{% endif %}
+                    </div>
+                {% endif %}
+            </div>
+            
+            <!-- INFO DEL PRODUCTO -->
+            <div style="padding: 20px;">
+                <span class="tag-departamento">{{ p[5] }}</span>
+                <h3 class="prod-titulo">{{ p[1] }}</h3>
+                <p class="prod-info">Presentación: {{ p[4] }} Litros</p>
+                
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 20px;">
+                    <span class="prod-precio">${{ "%.2f"|format(p[2]) }}</span>
+                    
+                    {# 🔐 LÓGICA DE ACCESO: LOGIN O CARRITO #}
+                    {% if session.get('cliente_id') or session.get('admin') %}
+                        <!-- SI ESTÁ LOGUEADO: Formulario que envía el código -->
+                        <form action="/carrito/agregar" method="POST" style="margin: 0;">
+                            <input type="hidden" name="codigo" value="{{ p[1] }}"> {# p[1] suele ser el código/descripción #}
+                            <input type="hidden" name="cantidad" value="1">
+                            <button type="submit" class="btn-add">
+                                ➕ Agregar
+                            </button>
+                        </form>
+                    {% else %}
+                        <!-- SI NO ESTÁ LOGUEADO: Link directo al login (Evita el error de código vacío) -->
+                        <a href="/login_cliente" class="btn-add" style="text-decoration: none; display: inline-block; text-align: center; line-height: 1.5;">
+                            ➕ Agregar
+                        </a>
+                    {% endif %}
+                </div>
+            </div>
+
+        </div>
+        {% endfor %}
+
+    </div>
+</div>
+
+<style>
+    .producto-card-tienda {
+        background: white;
+        border-radius: 25px;
+        overflow: hidden;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+        border: 1px solid #f0f0f0;
+        transition: all 0.3s ease;
+    }
+
+    .producto-card-tienda:hover {
+        transform: translateY(-10px);
+        box-shadow: 0 20px 40px rgba(0,123,255,0.1);
+        border-color: #007bff;
+    }
+
+    .foto-wrapper {
+        height: 180px; 
+        background: #f8f9fa; 
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+    }
+
+    .img-real {
+        width: 100%;
+        height: 100%;
+        object-fit: contain; 
+        padding: 15px; 
+    }
+
+    .emoji-fallback {
+        font-size: 5rem;
+    }
+
+    .tag-departamento {
+        font-size: 0.75rem;
+        color: #007bff;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+
+    .prod-titulo {
+        margin: 5px 0;
+        color: #333;
+        font-size: 1.3rem;
+        font-weight: 700;
+    }
+
+    .prod-info {
+        color: #888;
+        font-size: 0.9rem;
+        margin: 0;
+    }
+
+    .prod-precio {
+        font-size: 1.6rem;
+        font-weight: 800;
+        color: #28a745;
+    }
+
+    .btn-carrito-fijo {
+        background: #111;
+        color: white;
+        padding: 12px 25px;
+        border-radius: 50px;
+        text-decoration: none;
+        font-weight: 700;
+        display: flex;
+        gap: 10px;
+    }
+
+    .btn-add {
+        background: #007bff;
+        color: white;
+        border: none;
+        padding: 12px 22px;
+        border-radius: 15px;
+        font-weight: 700;
+        cursor: pointer;
+        transition: 0.3s;
+        font-family: inherit;
+        font-size: 1rem;
+    }
+
+    .btn-add:hover {
+        background: #0056b3;
+        transform: scale(1.05);
+    }
+
+    .badge-filter {
+        background: white;
+        border: 1px solid #ddd;
+        padding: 10px 22px;
+        border-radius: 50px;
+        font-weight: 600;
+        cursor: pointer;
+        white-space: nowrap;
+        color: #666;
+    }
+
+    .badge-filter.active {
+        background: #007bff;
+        color: white;
+        border-color: #007bff;
+    }
+</style>
+
+{% endblock %}

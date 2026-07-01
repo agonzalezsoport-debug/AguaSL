@@ -1,0 +1,277 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<style>
+    body {
+        background-color: #f4f7f6;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+
+    .clients-container {
+        max-width: 1200px;
+        margin: 30px auto;
+        padding: 0 20px;
+    }
+
+    .page-title {
+        font-size: 26px;
+        font-weight: 700;
+        color: #1e293b;
+        margin-bottom: 25px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    /* 🏠 FORMULARIOS ESTILIZADOS */
+    .form-card {
+        background: white;
+        padding: 24px;
+        border-radius: 16px;
+        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+        margin-bottom: 30px;
+    }
+
+    .form-card h3 {
+        margin-top: 0;
+        margin-bottom: 20px;
+        font-size: 18px;
+        color: #1e293b;
+        font-weight: 600;
+    }
+
+    .form-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 15px;
+        align-items: end;
+    }
+
+    .input-group {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+
+    .input-group label {
+        font-size: 13px;
+        font-weight: 600;
+        color: #475569;
+    }
+
+    .input-field {
+        padding: 10px 14px;
+        border: 1px solid #cbd5e1;
+        border-radius: 10px;
+        font-size: 14px;
+        color: #334155;
+        outline: none;
+        transition: all 0.2s;
+        background: #fff;
+    }
+
+    .input-field:focus {
+        border-color: #0284c7;
+        box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.1);
+    }
+
+    /* 📋 TABLA ELEGANTE DE CLIENTES */
+    .table-responsive {
+        background: white;
+        border-radius: 16px;
+        overflow: hidden;
+        box-shadow: 0 10px 15px -3px rgba(0,0,0,0.05);
+    }
+
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        text-align: left;
+    }
+
+    th {
+        background: #0f172a;
+        color: #f8fafc;
+        padding: 16px;
+        font-size: 13px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    td {
+        padding: 14px 16px;
+        border-bottom: 1px solid #f1f5f9;
+        color: #334155;
+        font-size: 14px;
+        vertical-align: middle;
+    }
+
+    tr:last-child td {
+        border-bottom: none;
+    }
+
+    tr:hover {
+        background-color: #f8fafc;
+    }
+
+    /* 🛠️ BOTONERA ACCESIBLE */
+    .btn {
+        padding: 10px 20px;
+        border: none;
+        border-radius: 10px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 600;
+        transition: all 0.2s;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+    }
+
+    .btn-submit {
+        background: #2a9d8f;
+        color: white;
+        height: 41px; /* Alineación perfecta con los inputs */
+        box-sizing: border-box;
+    }
+
+    .btn-submit:hover {
+        background: #21867a;
+    }
+
+    .btn-edit {
+        background: #e0f2fe;
+        color: #0369a1;
+        padding: 6px 12px;
+        font-size: 13px;
+    }
+
+    .btn-edit:hover {
+        background: #bae6fd;
+    }
+
+    .btn-delete {
+        background: #fff1f2;
+        color: #be123c;
+        padding: 6px 12px;
+        font-size: 13px;
+        border: none;
+        border-radius: 10px;
+        cursor: pointer;
+        font-weight: 600;
+    }
+
+    .btn-delete:hover {
+        background: #ffe4e6;
+    }
+
+    .actions-cell {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+    }
+</style>
+
+<div class="clients-container">
+
+    <h2 class="page-title">👥 Gestión de Clientes</h2>
+
+    <!-- ================= AGREGAR CLIENTE ================= -->
+    {% if not cliente_editar %}
+    <div class="form-card">
+        <h3>➕ Registrar Nuevo Cliente</h3>
+        <form method="POST" action="/clientes/agregar" class="form-grid">
+            <div class="input-group">
+                <label>Nombre Completo</label>
+                <input name="nombre" class="input-field" placeholder="Ej: Juan Pérez" required>
+            </div>
+
+            <div class="input-group">
+                <label>Teléfono / Celular</label>
+                <input name="telefono" class="input-field" placeholder="Ej: 2664123456">
+            </div>
+
+            <div class="input-group">
+                <label>Dirección Particular</label>
+                <input name="direccion" class="input-field" placeholder="Ej: Av. Mitre 123">
+            </div>
+
+            <button type="submit" class="btn btn-submit">💾 Guardar Cliente</button>
+        </form>
+    </div>
+    {% endif %}
+
+    <!-- ================= EDITAR CLIENTE ================= -->
+    {% if cliente_editar %}
+    <div class="form-card" style="border: 2px solid #0284c7; background: #f0f9ff;">
+        <h3 style="color: #0369a1;">✏️ Editando Cliente: <span style="font-weight: 700;">{{cliente_editar[1]}}</span></h3>
+        <form method="POST" action="/clientes/actualizar/{{cliente_editar[0]}}" class="form-grid">
+            <div class="input-group">
+                <label>Nombre</label>
+                <input name="nombre" class="input-field" value="{{cliente_editar[1]}}" required>
+            </div>
+
+            <div class="input-group">
+                <label>Teléfono</label>
+                <input name="telefono" class="input-field" value="{{cliente_editar[2]}}">
+            </div>
+
+            <div class="input-group">
+                <label>Dirección</label>
+                <input name="direccion" class="input-field" value="{{cliente_editar[3]}}">
+            </div>
+
+            <div style="display: flex; gap: 10px;">
+                <button type="submit" class="btn btn-submit" style="background: #0284c7;">💾 Aplicar Cambios</button>
+                <a href="/clientes" class="btn" style="background: #cbd5e1; color: #334155;">Cancelar</a>
+            </div>
+        </form>
+    </div>
+    {% endif %}
+
+    <!-- ================= LISTADO DE CLIENTES ================= -->
+    <div class="table-responsive">
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 30%;">Nombre</th>
+                    <th style="width: 25%;">Teléfono</th>
+                    <th style="width: 25%;">Dirección</th>
+                    <th style="width: 20%;">Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for c in clientes %}
+                <tr>
+                    <!-- Forzamos la lectura estricta de las primeras columnas para ignorar hashes de contraseñas -->
+                    <td style="font-weight: 600; color: #1e293b;">{{ c[1] }}</td>
+                    <td>
+                        {% if c[2] %} 📞 {{ c[2] }} {% else %} <span style="color: #94a3b8; font-style: italic;">Sin teléfono</span> {% endif %}
+                    </td>
+                    <td>
+                        {% if c[3] %} 📍 {{ c[3] }} {% else %} <span style="color: #94a3b8; font-style: italic;">Sin dirección</span> {% endif %}
+                    </td>
+                    <td>
+                        <div class="actions-cell">
+                            <a href="/clientes?editar={{c[0]}}" class="btn btn-edit">✏️ Editar</a>
+                            
+                            <form method="POST" action="/clientes/eliminar/{{c[0]}}" style="margin: 0;">
+                                <button type="submit" class="btn-delete" onclick="return confirm('¿Seguro que querés eliminar a este cliente del sistema?')">
+                                    🗑️ Eliminar
+                                </button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+</div>
+
+{% endblock %}

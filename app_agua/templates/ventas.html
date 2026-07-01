@@ -1,0 +1,1163 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<h2>💰 POS Profesional</h2>
+<!-- ================================================================= -->
+<!-- 1. BOTÓN FLOTANTE (Fijo en el extremo lateral DERECHO)          -->
+<!-- ================================================================= -->
+<button class="btn-abrir-ofertas-der" onclick="togglePanelOfertas()">
+  🔥 <span class="texto-btn-oferta">Ofertas</span>
+</button>
+
+<!-- ================================================================= -->
+<!-- 2. PANEL LATERAL DESPLEGABLE (Se desliza desde la DERECHA)      -->
+<!-- ================================================================= -->
+<aside id="panelOfertas" class="panel-ofertas-flotante-der">
+  
+  <div class="panel-ofertas-header">
+    <h2>🔥 Ofertas Especiales</h2>
+    <button class="btn-cerrar-ofertas" onclick="togglePanelOfertas()">×</button>
+  </div>
+  
+  <div class="panel-ofertas-contenido">
+    
+    <!-- Botón para lanzar la segunda pantalla (Visor Público) -->
+    <div class="control-monitor-container">
+      <button class="btn-lanzar-monitor" onclick="abrirVisorPublicoCliente()">
+        🖥️ Enviar Video a Pantalla de Cliente
+      </button>
+    </div>
+
+    <!-- FORMULARIO EDITOR CON BUSCADOR DINÁMICO POR AUTOCOMPLETADO -->
+    <div class="formulario-editor-ofertas">
+      <h3>✍️ Configurar Tarjeta de Oferta</h3>
+      
+      <div class="grupo-input">
+        <label>Buscar Producto en Stock (Escribe el nombre):</label>
+        <input type="text" id="buscadorStockInput" list="listaProductosStock" placeholder="Escribe para buscar..." onchange="detectarSeleccionDataList()">
+        <datalist id="listaProductosStock"></datalist>
+      </div>
+
+      <div class="grupo-input">
+        <label>Título en Tarjeta:</label>
+        <input type="text" id="editTitulo" value="" oninput="actualizarTarjetaVisual()">
+      </div>
+      
+      <div class="grupo-input-row">
+        <div class="grupo-input">
+          <label>Precio Anterior ($):</label>
+          <input type="number" id="editAntes" value="" oninput="actualizarTarjetaVisual()">
+        </div>
+        <div class="grupo-input">
+          <label>Precio Oferta ($):</label>
+          <input type="number" id="editAhora" value="" oninput="actualizarTarjetaVisual()">
+        </div>
+      </div>
+    </div>
+
+    <!-- Lista de Tarjetas de Ofertas -->
+    <div class="lista-ofertas-flotante">
+      
+      <!-- TARJETA DE OFERTA DINÁMICA -->
+      <div class="tarjeta-oferta-mini" id="tarjeta1">
+        <span class="badge-descuento-mini" id="viewDescuento">0%</span>
+        <div class="tarjeta-cuerpo-flex">
+          <div class="imagen-contenedor-fijo">
+            <img src="" id="viewImagen" alt="Producto Oferta" onerror="manejarErrorImagen(this)">
+          </div>
+          <div class="info-oferta-mini">
+            <h3 id="viewTitulo">Cargando...</h3>
+            <p class="precio-antes-mini" id="viewAntes">$0.00</p>
+            <p class="precio-ahora-mini" id="viewAhora">$0.00</p>
+          </div>
+        </div>
+        
+        <!-- Botón de acción rápida conectado al procesador asíncrono -->
+        <button type="button" class="btn-add-carrito-mini" id="btnAccionTarjeta1" onclick="">
+          Añadir al Carrito +
+        </button>
+      </div>
+
+    </div>
+  </div>
+</aside>
+
+<!-- ================================================================= -->
+<!-- 3. DISEÑO Y ESTILOS VISUALES BLINDADOS (CSS)                     -->
+<!-- ================================================================= -->
+<style>
+  .btn-abrir-ofertas-der {
+    position: fixed; right: 0; top: 35%; transform: translateY(-50%);
+    background: #e67e22; color: white; border: none; padding: 15px 12px;
+    border-radius: 8px 0 0 8px; cursor: pointer; font-weight: bold; z-index: 9999;
+    box-shadow: -2px 2px 10px rgba(0,0,0,0.25); display: flex; flex-direction: column; align-items: center; gap: 6px;
+  }
+  .texto-btn-oferta { writing-mode: vertical-rl; text-transform: uppercase; font-size: 11px; letter-spacing: 1.5px; }
+
+  .panel-ofertas-flotante-der {
+    position: fixed; right: -360px; top: 0; width: 340px; height: 100vh;
+    background: #ffffff; box-shadow: -5px 0 15px rgba(0,0,0,0.15);
+    transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1); z-index: 10000;
+    display: flex; flex-direction: column; box-sizing: border-box; font-family: Arial, sans-serif;
+  }
+  .panel-ofertas-flotante-der.activo { right: 0; }
+
+  .panel-ofertas-header { display: flex; justify-content: space-between; align-items: center; padding: 15px; background: #2c3e50; color: white; }
+  .panel-ofertas-header h2 { margin: 0; font-size: 16px; font-weight: bold; }
+  .btn-cerrar-ofertas { background: none; border: none; color: white; font-size: 26px; cursor: pointer; line-height: 1; }
+
+  .panel-ofertas-contenido { padding: 15px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 15px; background: #fdfdfd; }
+  .control-monitor-container { width: 100%; }
+  .btn-lanzar-monitor { background: #2c3e50; color: white; border: 1px solid #34495e; padding: 10px; border-radius: 6px; font-weight: bold; font-size: 12.5px; width: 100%; cursor: pointer; transition: background 0.2s; }
+  .btn-lanzar-monitor:hover { background: #34495e; }
+
+  .formulario-editor-ofertas { background: #f7fafc; border: 1px solid #cbd5e0; border-radius: 6px; padding: 12px; position: relative; z-index: 10001; }
+  .formulario-editor-ofertas h3 { margin: 0 0 10px 0; font-size: 13px; color: #4a5568; text-transform: uppercase; }
+  .grupo-input { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; position: relative; }
+  .grupo-input-row { display: flex; gap: 8px; }
+  .grupo-input-row .grupo-input { flex: 1; }
+  .grupo-input label { font-size: 11px; color: #718096; font-weight: bold; }
+  .grupo-input input { padding: 8px 6px; border: 1px solid #cbd5e0; border-radius: 4px; font-size: 13px; background: #fff; width: 100%; box-sizing: border-box; color: #2d3748; }
+
+  .lista-ofertas-flotante { display: flex; flex-direction: column; gap: 12px; }
+  .tarjeta-oferta-mini { position: relative; display: flex; flex-direction: column; gap: 10px; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; background: #ffffff; }
+  .tarjeta-cuerpo-flex { display: flex; gap: 12px; align-items: center; width: 100%; }
+  
+  .imagen-contenedor-fijo { width: 70px; height: 70px; flex-shrink: 0; background: #f7fafc; border-radius: 4px; display: flex; align-items: center; justify-content: center; overflow: hidden; border: 1px solid #edf2f7; }
+  .tarjeta-oferta-mini img { max-width: 100%; max-height: 100%; object-fit: contain; }
+  
+  .info-oferta-mini { flex: 1; min-width: 0; }
+  .info-oferta-mini h3 { font-size: 13.5px; margin: 0 0 4px 0; color: #2d3748; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .precio-antes-mini { text-decoration: line-through; color: #a0aec0; font-size: 11px; margin: 0; }
+  .precio-ahora-mini { color: #38a169; font-weight: bold; font-size: 15px; margin: 2px 0 0 0; }
+  
+  .btn-add-carrito-mini { background: #38a169; color: white; border: none; padding: 7px 10px; border-radius: 4px; font-size: 12px; cursor: pointer; font-weight: bold; width: 100%; margin-top: 4px; }
+  .btn-add-carrito-mini:hover { background: #276749; }
+  .badge-descuento-mini { position: absolute; top: 6px; left: 6px; background: #e53e3e; color: white; font-size: 9px; font-weight: bold; padding: 2px 5px; border-radius: 4px; z-index: 2; }
+</style>
+
+<!-- ================================================================= -->
+<script>
+  // ==========================================
+  // VARIABLES GLOBALES Y DE CONTROL
+  // ==========================================
+  let inventarioProductosGlobal = [];
+  let ventanaVisorPublicoReferencia = null;
+  let indiceOfertaActual = 0;       // 🔥 NUEVO: Rastrea qué oferta se está mostrando
+  let temporizadorOfertas = null;   // 🔥 NUEVO: Guarda el control del bucle de 5 segundos
+
+  // ==========================================
+  // EVENTO DE CARGA INICIAL
+  // ==========================================
+  document.addEventListener("DOMContentLoaded", function() {
+    // Carga los productos y, CUANDO TERMINE, arranca el carrusel de 5 segundos
+    cargarProductosDesdeFlask().then((exito) => {
+      if (exito) {
+        iniciarRotacionOfertas();
+      }
+    });
+    
+    // Escanea la tabla del carrito actual generada por Flask al encender
+    guardarCarritoEnAlmacenLocal();
+  });
+
+  // ==========================================
+  // FUNCIONES DE INTERFAZ Y VISOR
+  // ==========================================
+  function togglePanelOfertas() {
+    const panel = document.getElementById('panelOfertas');
+    panel.classList.toggle('activo');
+  }
+
+  function abrirVisorPublicoCliente() {
+    if (ventanaVisorPublicoReferencia && !ventanaVisorPublicoReferencia.closed) {
+      ventanaVisorPublicoReferencia.focus();
+      return;
+    }
+    const parametros = "width=900,height=650,menubar=no,toolbar=no,location=no,status=no,resizable=yes";
+    ventanaVisorPublicoReferencia = window.open('/visor_publico_ofertas', 'VisorPublicoMonitores', parametros);
+  }
+
+  function manejarErrorImagen(imgElement) {
+    imgElement.src = "data:image/svg+xml;utf8,<svg xmlns='w3.org' width='100' height='100' viewBox='0 0 24 24' fill='none' stroke='%23a0aec0' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'><path d='M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z'></path><polyline points='3.27 6.96 12 12.01 20.73 6.96'></polyline><line x1='12' y1='22.08' x2='12' y2='12'></line></svg>";
+  }
+
+  // ==========================================
+  // CONEXIÓN CON EL BACKEND (FLASK)
+  // ==========================================
+  async function cargarProductosDesdeFlask() {
+    const dataListElement = document.getElementById('listaProductosStock');
+    const inputBuscador = document.getElementById('buscadorStockInput');
+    try {
+      const respuesta = await fetch('/api/obtener_productos_stock');
+      if (!respuesta.ok) throw new Error(`Status: ${respuesta.status}`);
+      inventarioProductosGlobal = await respuesta.json();
+      
+      if (!inventarioProductosGlobal || inventarioProductosGlobal.length === 0) {
+        inputBuscador.placeholder = "⚠️ Sin productos en stock";
+        return false;
+      }
+      
+      dataListElement.innerHTML = '';
+      inventarioProductosGlobal.forEach(prod => {
+        const option = document.createElement('option');
+        option.value = prod.nombre; 
+        dataListElement.appendChild(option);
+      });
+
+      return true; // Retorna éxito para avisarle al DOMContentLoaded
+    } catch (error) {
+      console.error("❌ Falló la indexación del stock:", error);
+      return false;
+    }
+  }
+
+  // ==========================================
+  // LÓGICA DE DETECCIÓN Y PROCESAMIENTO
+  // ==========================================
+  function detectarSeleccionDataList() {
+    const valorEscrito = document.getElementById('buscadorStockInput').value;
+    const productoEncontrado = inventarioProductosGlobal.find(p => p.nombre && p.nombre.trim() === valorEscrito.trim());
+    if (productoEncontrado) cargarDatosDeProductoEspecifico(productoEncontrado);
+  }
+
+  function cargarDatosDeProductoEspecifico(producto) {
+    if (!producto) return;
+    document.getElementById('editTitulo').value = producto.nombre || "Producto sin nombre";
+    document.getElementById('editAntes').value = producto.precio || 0;
+    document.getElementById('editAhora').value = Math.round((producto.precio || 0) * 0.8);
+
+    const imagenTarjeta = document.getElementById('viewImagen');
+    if (imagenTarjeta) {
+      imagenTarjeta.src = producto.imagen && producto.imagen !== "" ? `/static/productos/${producto.imagen}` : "";
+    }
+    actualizarTarjetaVisual(producto.codigo);
+  }
+
+  function actualizarTarjetaVisual(codigoOpcional) {
+    const titulo = document.getElementById('editTitulo').value;
+    const antesNum = parseFloat(document.getElementById('editAntes').value) || 0;
+    const ahoraNum = parseFloat(document.getElementById('editAhora').value) || 0;
+
+    let codigoAsociado = codigoOpcional;
+    if (!codigoAsociado) {
+      const prod = inventarioProductosGlobal.find(p => p.nombre === titulo);
+      codigoAsociado = prod ? prod.codigo : "";
+    }
+
+    let porcentajeTexto = "0%";
+    let porcentajeNumerico = 0;
+    if (antesNum > 0 && antesNum > ahoraNum) {
+      porcentajeNumerico = Math.round(((antesNum - ahoraNum) / antesNum) * 100);
+      porcentajeTexto = `-${porcentajeNumerico}%`;
+    }
+
+    document.getElementById('viewTitulo').innerText = titulo || "Elige un producto...";
+    document.getElementById('viewAntes').innerText = '$' + antesNum.toLocaleString('es-AR', { minimumFractionDigits: 2 });
+    document.getElementById('viewAhora').innerText = '$' + ahoraNum.toLocaleString('es-AR', { minimumFractionDigits: 2 });
+    document.getElementById('viewDescuento').innerText = porcentajeTexto;
+
+    // RESPALDO EN MEMORIA LOCAL (Sincroniza Visor Cliente)
+    localStorage.setItem('oferta_titulo', titulo);
+    localStorage.setItem('oferta_antes', '$' + antesNum.toLocaleString('es-AR', { minimumFractionDigits: 2 }));
+    localStorage.setItem('oferta_ahora', '$' + ahoraNum.toLocaleString('es-AR', { minimumFractionDigits: 2 }));
+    localStorage.setItem('oferta_descuento', porcentajeTexto);
+    
+    const prodSel = inventarioProductosGlobal.find(p => p.nombre === titulo);
+    localStorage.setItem('oferta_imagen', prodSel ? (prodSel.imagen || "") : "");
+
+    const btn = document.getElementById('btnAccionTarjeta1');
+    if (btn) {
+      btn.setAttribute('onclick', `ejecutarEnvioOfertaAsync('${codigoAsociado}', ${porcentajeNumerico})`);
+    }
+  }
+
+  // ==========================================
+  // 🔥 NUEVO: MOTOR AUTOMÁTICO DE OFERTAS (5 SEG)
+  // ==========================================
+  function iniciarRotacionOfertas() {
+    if (temporizadorOfertas) clearInterval(temporizadorOfertas);
+
+    // Filtra la lista: solo toma productos que tengan un precio cargado mayor a cero
+    const productosValidos = inventarioProductosGlobal.filter(p => (p.precio || 0) > 0);
+
+    if (productosValidos.length === 0) {
+      console.warn("⚠️ No hay productos válidos con precio para rotar.");
+      return;
+    }
+
+    // Muestra la primera oferta de inmediato al cargar la página
+    mostrarSiguienteOferta(productosValidos);
+
+    // Configura el ciclo repetitivo exacto cada 5000 milisegundos (5 segundos)
+    temporizadorOfertas = setInterval(() => {
+      mostrarSiguienteOferta(productosValidos);
+    }, 5000);
+  }
+
+  function mostrarSiguienteOferta(lista) {
+    if (indiceOfertaActual >= lista.length) {
+      indiceOfertaActual = 0; // Reinicia el ciclo si llegó al final
+    }
+
+    const productoSeleccionado = lista[indiceOfertaActual];
+    
+    // Coloca el nombre en el input visual para que el cajero sepa qué se está mostrando
+    const inputBuscador = document.getElementById('buscadorStockInput');
+    if (inputBuscador) inputBuscador.value = productoSeleccionado.nombre;
+
+    // Ejecuta las funciones que ya tenías para dibujar la tarjeta y actualizar localStorage
+    cargarDatosDeProductoEspecifico(productoSeleccionado);
+    
+    // Pasa al siguiente producto para la próxima vuelta de 5 segundos
+    indiceOfertaActual++;
+  }
+
+  // ==========================================
+  // ENVÍO DE DATOS Y RESPALDOS DEL CARRITO
+  // ==========================================
+  async function ejecutarEnvioOfertaAsync(codigoArticulo, valorDescuentoNum) {
+    try {
+      console.log(`⚡ Despachando Fetch Asíncrono: Código ${codigoArticulo}, Descuento ${valorDescuentoNum}%`);
+      
+      const datosFormulario = new FormData();
+      datosFormulario.append('codigo', codigoArticulo);
+      datosFormulario.append('cantidad', '1');
+      datosFormulario.append('descuento', valorDescuentoNum.toString());
+
+      const respuesta = await fetch('/carrito/agregar', {
+          method: 'POST',
+          headers: { 'X-Requested-With': 'XMLHttpRequest' },
+          body: datosFormulario
+      });
+
+      if (!respuesta.ok) throw new Error("Fallo en la carga del servidor de Flask");
+
+      const resultado = await respuesta.json();
+      console.log("✅ Servidor Flask guardó la oferta en sesión:", resultado);
+
+      guardarCarritoEnAlmacenLocal();
+      window.location.reload();
+
+    } catch (error) {
+      console.error("❌ Error enviando oferta por AJAX:", error);
+      alert("No se pudo incorporar la oferta. Verifica que reiniciaste tu servidor de Python.");
+    }
+  }
+
+    function guardarCarritoEnAlmacenLocal() {
+    const filas = document.querySelectorAll('table tbody tr') || document.querySelectorAll('table tr');
+    let items = [];
+    let totalGeneral = 0;
+
+    filas.forEach(fila => {
+      if (fila.cells && fila.cells.length >= 3) {
+        const cant = parseInt(fila.cells[1].textContent) || 1;
+        const desc = fila.cells[0].textContent.trim();
+        
+        // 🔥 CORRECCIÓN: Remover todo lo que no sea número, coma o punto de manera segura
+        let limpio = fila.cells[2].textContent.replace(/[^0-9,,.]/g, '').trim();
+        
+        // Reemplazar punto de miles por nada, y cambiar la coma decimal por punto matemático
+        if (limpio.includes(',') && limpio.includes('.')) {
+          limpio = limpio.replace(/\./g, '').replace(',', '.');
+        } else if (limpio.includes(',')) {
+          limpio = limpio.replace(',', '.');
+        }
+        
+        const subtotalFila = parseFloat(limpio) || 0;
+
+        if (desc && desc !== "Descripción" && !desc.includes("Carrito vacío") && !desc.includes("Total")) {
+          const precioUnitario = subtotalFila / cant;
+          items.push({ desc: desc, cantidad: cant, precio: precioUnitario });
+          totalGeneral += subtotalFila;
+        }
+      }
+    });
+
+    const paquete = { items: items, total: totalGeneral };
+    localStorage.setItem('carrito_compartido_pos', JSON.stringify(paquete));
+    console.log("💾 Ticket corregido y respaldado localmente:", paquete);
+  }
+
+</script>
+<!-- ================================================================= -->
+
+<!-- ===================== AGREGAR PRODUCTO ===================== -->
+<div style="
+    background:#f5f5f5;
+    padding:20px;
+    border-radius:12px;
+    margin-bottom:15px;
+    width:100%;
+">
+
+<h3>🔎 Agregar producto</h3>
+
+<div style="display:flex; gap:10px; margin-bottom:10px;">
+
+    <button type="button" onclick="abrirVentaManual()"
+        style="padding:10px 15px;background:#16a34a;color:white;border:none;border-radius:8px;">
+        ➕ Venta directa
+    </button>
+
+    <button type="button" onclick="abrirBuscador()"
+        style="padding:10px 15px;background:#2563eb;color:white;border:none;border-radius:8px;">
+        🔎 Buscar producto (F10)
+    </button>
+
+</div>
+
+<form method="POST" action="/carrito/agregar"
+      style="display:flex;gap:10px;align-items:center;">
+
+    <input name="codigo"
+           id="codigo"
+           placeholder="📦 Escanear código de barras..."
+           style="flex:1;padding:22px;font-size:26px;border:2px solid #4CAF50;border-radius:10px;"
+           required autofocus autocomplete="off">
+
+    <input name="cantidad"
+           type="number"
+           placeholder="Cant."
+           min="1"
+           value="1"
+           style="width:100px;padding:10px;font-size:16px;"
+           required>
+
+    <!-- Checkbox de Canje -->
+    <label style="background: #fef3c7; padding: 10px; border-radius: 8px; border: 1px solid #f59e0b; cursor: pointer; display: flex; align-items: center; gap: 5px; font-size: 14px;">
+        <input type="checkbox" name="es_canje" id="es_canje_main"> 
+        <span style="font-weight: bold; color: #92400e;">🔄 ¿ES CANJE?</span>
+    </label>
+
+    <button type="submit"
+            style="padding:10px 20px;background:green;color:white;border:none;border-radius:8px;font-weight:bold;cursor:pointer;">
+        ➕ Agregar
+    </button>
+</form>
+
+
+</div>
+
+{% if carrito %}
+
+<h3>🛒 Carrito</h3>
+
+<div style="background:#fff;padding:10px;border-radius:10px;">
+
+<table border="1" cellpadding="6" style="width:100%;">
+<tr>
+    <th>Producto</th>
+    <th>Cantidad</th>
+    <th>Subtotal</th>
+    <th></th>
+</tr>
+
+{% for item in carrito %}
+<tr>
+    <td>{{ item.desc }}</td>
+    <td>{{ item.cantidad }}</td>
+    <td>${{ item.precio * item.cantidad }}</td>
+    <td><a href="/carrito/eliminar/{{ loop.index0 }}">❌</a></td>
+</tr>
+{% endfor %}
+
+</table>
+
+<h2>💰 Total: $<span id="total">{{ total }}</span></h2>
+
+</div>
+
+<!-- ===================== VENTA ===================== -->
+<form method="POST" action="/carrito/confirmar" style="margin-top:15px; background: #fff; padding: 15px; border-radius: 10px; border: 1px solid #ddd;">
+    <!-- Agregá esto dentro del formulario de venta -->
+<input type="hidden" name="puntos_canje_dinero" id="puntos_canje_dinero" value="0">
+
+
+    <!-- NUEVO: SELECCIÓN DE CLIENTE PARA PUNTOS -->
+    <div style="margin-bottom: 15px;">
+        <label><b>👤 Seleccionar Cliente (Suma/Resta Puntos)</b></label>
+        <select name="cliente_id" style="width: 100%; padding: 12px; margin-top: 5px; border-radius: 8px; border: 1px solid #ccc;">
+            <option value="">👤 Consumidor Final (No suma puntos)</option>
+            {% for cli in clientes %}
+            <option value="{{ cli.id }}">{{ cli.nombre }} (Puntos: {{ cli.puntos_accumulados }})</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <label>💳 Método de pago</label>
+    <select name="metodo_pago" id="metodo_pago" onchange="alternarMetodoMixto(); calcularTotal();" style="width: 100%; padding: 10px; border-radius: 8px;">
+        <option value="efectivo">💵 Efectivo</option>
+        <option value="transferencia">🏦 Transferencia</option>
+        <option value="tarjeta">💳 Tarjeta</option>
+        <option value="qr">📱 QR</option>
+        <option value="fiado">📒 Fiado</option>
+        <option value="mixto">🔄 Pago Mixto (Dividir montos)</option>
+    </select>
+
+    <!-- CONTENEDOR DESGLOSE MIXTO (Verificá que tenga los atributos 'name') -->
+  <div id="contenedorMixto" style="display: none; margin-top: 15px; background: #f8fafc; padding: 12px; border-radius: 8px; border: 1px solid #e2e8f0;">
+      <label style="font-weight: bold; color: #1e293b; display: block; margin-bottom: 8px;">Desglose de Montos:</label>
+      
+      <div style="display: flex; gap: 8px; margin-bottom: 6px; align-items: center; justify-content: space-between;">
+          <span style="font-size: 13px;">💵 Efectivo:</span>
+          <div style="display: flex; gap: 4px;">
+              <!-- CRÍTICO: Debe tener name="pago_efectivo" -->
+              <input type="number" id="pago_efectivo" name="pago_efectivo" value="0" min="0" step="0.01" oninput="calcularTotal()" style="width: 120px; padding: 6px; text-align: right;">
+              <button type="button" onclick="autoCompletarMetodo('pago_efectivo')" style="padding: 6px; font-size: 12px; background: #2563eb; color: white; border: none; border-radius: 4px; cursor: pointer;">⚡</button>
+          </div>
+      </div>
+      <div style="display: flex; gap: 8px; margin-bottom: 6px; align-items: center; justify-content: space-between;">
+          <span style="font-size: 13px;">🏦 Transferencia:</span>
+          <div style="display: flex; gap: 4px;">
+              <!-- CRÍTICO: Debe tener name="pago_transferencia" -->
+              <input type="number" id="pago_transferencia" name="pago_transferencia" value="0" min="0" step="0.01" onchange="solicitarRecargoMixto('transferencia')" oninput="calcularTotal()" style="width: 120px; padding: 6px; text-align: right;">
+              <button type="button" onclick="autoCompletarMetodo('pago_transferencia')" style="padding: 6px; font-size: 12px; background: #2563eb; color: white; border: none; border-radius: 4px; cursor: pointer;">⚡</button>
+          </div>
+      </div>
+      <div style="display: flex; gap: 8px; margin-bottom: 6px; align-items: center; justify-content: space-between;">
+          <span style="font-size: 13px;">💳 Tarjeta:</span>
+          <div style="display: flex; gap: 4px;">
+              <!-- CRÍTICO: Debe tener name="pago_tarjeta" -->
+              <input type="number" id="pago_tarjeta" name="pago_tarjeta" value="0" min="0" step="0.01" onchange="solicitarRecargoMixto('tarjeta')" oninput="calcularTotal()" style="width: 120px; padding: 6px; text-align: right;">
+              <button type="button" onclick="autoCompletarMetodo('pago_tarjeta')" style="padding: 6px; font-size: 12px; background: #2563eb; color: white; border: none; border-radius: 4px; cursor: pointer;">⚡</button>
+          </div>
+      </div>
+      <div style="display: flex; gap: 8px; margin-bottom: 6px; align-items: center; justify-content: space-between;">
+          <span style="font-size: 13px;">📱 QR:</span>
+          <div style="display: flex; gap: 4px;">
+              <!-- CRÍTICO: Debe tener name="pago_qr" -->
+              <input type="number" id="pago_qr" name="pago_qr" value="0" min="0" step="0.01" onchange="solicitarRecargoMixto('qr')" oninput="calcularTotal()" style="width: 120px; padding: 6px; text-align: right;">
+              <button type="button" onclick="autoCompletarMetodo('pago_qr')" style="padding: 6px; font-size: 12px; background: #2563eb; color: white; border: none; border-radius: 4px; cursor: pointer;">⚡</button>
+          </div>
+      </div>
+      <div style="display: flex; gap: 8px; margin-bottom: 6px; align-items: center; justify-content: space-between;">
+          <span style="font-size: 13px;">📒 Fiado:</span>
+          <div style="display: flex; gap: 4px;">
+              <!-- CRÍTICO: Debe tener name="pago_fiado" -->
+              <input type="number" id="pago_fiado" name="pago_fiado" value="0" min="0" step="0.01" oninput="calcularTotal()" style="width: 120px; padding: 6px; text-align: right;">
+              <button type="button" onclick="autoCompletarMetodo('pago_fiado')" style="padding: 6px; font-size: 12px; background: #2563eb; color: white; border: none; border-radius: 4px; cursor: pointer;">⚡</button>
+          </div>
+      </div>
+
+      <!-- inputs invisibles para transmitir las tasas de interés individuales recopiladas -->
+      <input type="hidden" id="recargo_mixto_transferencia" name="recargo_mixto_transferencia" value="0">
+      <input type="hidden" id="recargo_mixto_tarjeta" name="recargo_mixto_tarjeta" value="0">
+      <input type="hidden" id="recargo_mixto_qr" name="recargo_mixto_qr" value="0">
+
+      <div id="estado_mixto_alerta" style="margin-top: 10px; padding: 8px; border-radius: 6px; font-size: 13px; font-weight: bold; text-align: center; background: #fee2e2; color: #991b1b;">
+          Falta cubrir el total
+      </div>
+  </div>
+
+
+    <div style="margin-top:10px;">
+        <label>🎯 Descuento %</label>
+        <input type="number" id="descuento" name="descuento"
+              value="0" min="0" max="100"
+              oninput="calcularTotal()" style="width: 60px; padding: 5px;">
+    </div>
+
+    <div id="recargoBox" style="display:none;margin-top:10px;">
+        <label>Recargo %</label>
+        <input type="number" id="recargo" name="recargo"
+              value="0" min="0" max="50"
+              oninput="calcularTotal()" style="width: 60px; padding: 5px;">
+    </div>
+
+    <h2 style="color: #2563eb;">💰 Total final: $<span id="totalFinal">{{ total }}</span></h2>
+
+    <button type="submit" id="btnFinalizarVenta"
+            style="padding:15px; width:100%; background: #16a34a; color:white; border:none; border-radius: 8px; font-size:18px; font-weight: bold; cursor: pointer;">
+        💰 FINALIZAR VENTA
+    </button>
+
+
+</form>
+
+
+{% else %}
+<p>🛒 Carrito vacío</p>
+{% endif %}
+
+<!-- ===================== PROMOS ===================== -->
+<h3>🎁 Promos disponibles</h3>
+
+{% if promos %}
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
+
+{% for pr in promos %}
+<div style="border:2px dashed orange;padding:12px;border-radius:12px;background:#fff8e1;">
+
+    <h4>🎁 {{ pr[1] }}</h4>
+    <p>{{ pr[2] }}</p>
+    <p><b>💰 ${{ pr[3] }}</b></p>
+
+    <form method="POST" action="/carrito/agregar"
+          style="display:flex;gap:5px;margin-top:10px;">
+
+        <input type="hidden" name="codigo" value="PROMO-{{ pr[0] }}">
+
+        <input type="number"
+               name="cantidad"
+               value="1"
+               min="1"
+               style="width:60px;padding:5px;">
+
+        <button type="submit"
+                style="background:orange;color:white;border:none;border-radius:6px;padding:6px;">
+            ➕ Promo
+        </button>
+
+    </form>
+
+</div>
+{% endfor %}
+
+</div>
+{% else %}
+<p>⚠️ No hay promos activas</p>
+{% endif %}
+
+<!-- ===================== MODAL BUSCADOR ===================== -->
+<div id="modalBuscador" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);justify-content:center;align-items:center;z-index:9999;">
+    <div style="background:white;padding:20px;border-radius:10px;width:600px;">
+
+        <h2>🔎 Buscar producto</h2>
+
+        <input type="text" id="busqueda"
+               placeholder="Escribí nombre del producto..."
+               style="width:100%;padding:12px;margin-top:10px;">
+
+        <div id="resultados" style="margin-top:15px;max-height:300px;overflow:auto;"></div>
+
+        <button onclick="cerrarBuscador()" style="margin-top:10px;">
+            Cerrar
+        </button>
+
+    </div>
+</div>
+<!-- Debajo del selector de cliente en el POS -->
+<div id="seccion_puntos" style="display:none; background: #e0f2fe; padding: 10px; border-radius: 8px; margin-top: 10px;">
+    <p>🌟 Puntos: <span id="puntos_cliente">0</span> (Equivale a: $<span id="equiv_pesos">0</span>)</p>
+    <button type="button" onclick="aplicarPuntosComoDescuento()" 
+            style="background: #0369a1; color: white; border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer;">
+        Aplicar Descuento por Puntos
+    </button>
+</div>
+
+<script>
+document.getElementsByName("cliente_id")[0].onchange = function() {
+    let id = this.value;
+    if(id) {
+        // Capturar el nombre del cliente desde el elemento option seleccionado
+        let nombreCliente = this.options[this.selectedIndex].text;
+        // Limpiar textos genéricos si el selector dice "Seleccione cliente..."
+        if (nombreCliente.includes("Seleccione") || nombreCliente.includes("Elegir")) {
+            nombreCliente = "Cliente";
+        }
+
+        fetch(`/api/cliente/validar_puntos/${id}`)
+            .then(res => res.json())
+            .then(data => {
+                document.getElementById("seccion_puntos").style.display = "block";
+                document.getElementById("puntos_cliente").innerText = data.puntos;
+                document.getElementById("equiv_pesos").innerText = data.descuento_disponible;
+                window.puntos_disponibles = data.puntos;
+                
+                // 🔥 ENVIAR IDENTIDAD Y PUNTOS AL VISOR PÚBLICO
+                localStorage.setItem('cliente_nombre', nombreCliente);
+                localStorage.setItem('cliente_puntos', data.puntos);
+                localStorage.setItem('cliente_puntos_pesos', data.descuento_disponible);
+            });
+    } else {
+        document.getElementById("seccion_puntos").style.display = "none";
+        // 🔥 LIMPIEZA ABSOLUTA DE CLAVES DE IDENTIDAD
+        localStorage.removeItem('cliente_nombre');
+        localStorage.removeItem('cliente_puntos');
+        localStorage.removeItem('cliente_puntos_pesos');
+    }
+};
+
+
+function aplicarPuntosComoDescuento() {
+
+    let totalCarrito = parseFloat(
+        document.getElementById("total").innerText
+    );
+
+    let puntosDisponibles = parseFloat(
+        window.puntos_disponibles || 0
+    );
+
+    let descuentoPesos =
+        puntosDisponibles > totalCarrito
+        ? totalCarrito
+        : puntosDisponibles;
+
+    // Guardar puntos usados
+    document.getElementById(
+        "puntos_canje_dinero"
+    ).value = descuentoPesos;
+
+    // 🔥 YA NO TOCAMOS EL INPUT DESCUENTO
+    calcularTotal();
+
+    alert(
+        "⭐ Se aplicó un descuento de $" +
+        descuentoPesos +
+        " por puntos."
+    );
+}
+</script>
+
+
+<!-- ===================== MODAL VENTA DIRECTA ===================== -->
+<div id="modalManual"
+     style="display:none;
+            position:fixed;
+            top:0;
+            left:0;
+            width:100%;
+            height:100%;
+            background:rgba(0,0,0,0.5);
+            justify-content:center;
+            align-items:center;
+            z-index:9999;">
+
+    <div style="background:white;padding:20px;border-radius:10px;width:300px;">
+
+        <h2>➕ Venta directa</h2>
+
+        <input type="text" id="manual_desc" placeholder="Descripción"
+               style="width:100%;padding:10px;margin-top:10px;">
+
+        <input type="number" id="manual_precio" placeholder="Precio"
+               style="width:100%;padding:10px;margin-top:10px;">
+
+        <input type="number" id="manual_cantidad" value="1"
+               style="width:100%;padding:10px;margin-top:10px;">
+
+        <button onclick="agregarManual()"
+                style="margin-top:10px;background:green;color:white;padding:10px;width:100%;">
+            Agregar
+        </button>
+
+        <button onclick="cerrarManual()"
+                style="margin-top:5px;width:100%;">
+            Cancelar
+        </button>
+
+    </div>
+</div>
+
+
+<!-- ===================== SCRIPT ===================== -->
+<script>
+
+function abrirVentaManual() {
+    const modal = document.getElementById("modalManual");
+    if (!modal) return;
+    modal.style.display = "flex";
+}
+
+function cerrarManual() {
+    const modal = document.getElementById("modalManual");
+    if (modal) modal.style.display = "none";
+}
+
+function activarBuscador() {
+    let input = document.getElementById("busqueda");
+    if (!input) return;
+
+    input.oninput = function () {
+        let texto = this.value;
+        fetch(`/buscar_productos?q=${texto}`)
+            .then(res => res.json())
+            .then(data => {
+                let html = "";
+                if (data.length === 0) {
+                    html = "<p>Sin resultados</p>";
+                }
+                data.forEach(p => {
+                    html += `
+                        <div style="padding:10px;border-bottom:1px solid #ddd;cursor:pointer;"
+                             onclick="agregarProducto('${p.codigo}')">
+                            📦 ${p.descripcion} - $${p.precio}
+                        </div>
+                    `;
+                });
+                document.getElementById("resultados").innerHTML = html;
+            });
+    };
+}
+
+// 🌟 EXTRAER CARRITO (SIN DEPENDER DE TBODY Y SIN DESFASES)
+function pushCarritoAlAlmacen() {
+    try {
+        // 1. LOCALIZAR LA TABLA DE VENTAS DE FLASK
+        let tabla = document.querySelector("table");
+        
+        // 🔥 CORRECCIÓN CRÍTICA: Si no hay tabla en el HTML, el carrito está vacío y limpiamos todo (incluyendo cliente)
+        if (!tabla) {
+            localStorage.setItem('carrito_productos', JSON.stringify([]));
+            localStorage.setItem('carrito_total', "$0.00");
+            localStorage.setItem('carrito_compartido_pos', JSON.stringify({ items: [], total: 0 }));
+            
+            // 🔥 NUEVO: Forzar borrado del cliente y sus puntos al vaciar el carro
+            localStorage.removeItem('cliente_nombre');
+            localStorage.removeItem('cliente_puntos');
+            localStorage.removeItem('cliente_puntos_pesos');
+            
+            // También actualizamos el total visual de la caja por seguridad
+            let totalFinalDoc = document.getElementById("totalFinal");
+            if (totalFinalDoc) totalFinalDoc.innerText = "0.00";
+            return;
+        }
+
+        let filas = tabla.getElementsByTagName("tr");
+        let listaProductos = [];
+        let totalAcumuladoOld = 0;
+
+        // Recorremos las filas omitiendo la cabecera (i = 1)
+        for (let i = 1; i < filas.length; i++) {
+            let celdas = filas[i].getElementsByTagName("td");
+            
+            if (celdas && celdas.length >= 3) {
+                let textoDesc = celdas[0].innerText.trim();  
+                let textoCant = celdas[1].innerText.trim();  
+                let textoSubt = celdas[2].innerText.trim();  
+
+                // Ignoramos textos de sistema, filas de "Carrito vacío" o de "Total"
+                if (textoDesc !== "" && !textoDesc.includes("Total") && !textoDesc.includes("Carrito vacío") && !textoDesc.includes("esperando")) {
+                    
+                    let subtotalFormateado = textoSubt.includes('$') ? textoSubt : '$' + textoSubt;
+                    
+                    listaProductos.push({
+                        cantidad: textoCant || "1",
+                        descripcion: textoDesc,
+                        subtotal: subtotalFormateado
+                    });
+
+                    let numPuro = textoSubt.replace(/[^0-9,,.]/g, '').replace(',', '.').trim();
+                    totalAcumuladoOld += parseFloat(numPuro) || 0;
+                }
+            }
+        }
+
+        // 🔥 CONTROL DE VACIADO: Si el bucle no encontró productos válidos, limpiamos todo (incluyendo cliente)
+        if (listaProductos.length === 0) {
+            localStorage.setItem('carrito_productos', JSON.stringify([]));
+            localStorage.setItem('carrito_total', "$0.00");
+            localStorage.setItem('carrito_compartido_pos', JSON.stringify({ items: [], total: 0 }));
+            
+            // 🔥 NUEVO: Limpieza absoluta de puntos e identidad si la tabla queda vacía
+            localStorage.removeItem('cliente_nombre');
+            localStorage.removeItem('cliente_puntos');
+            localStorage.removeItem('cliente_puntos_pesos');
+            return;
+        }
+
+        // 2. SI HAY PRODUCTOS, GUARDAMOS NORMALMENTE
+        let totalElement = document.getElementById("totalFinal") || document.getElementById("total");
+        if (totalElement) {
+            let totalTexto = totalElement.innerText.trim();
+            localStorage.setItem('carrito_total', totalTexto.includes('$') ? totalTexto : '$' + totalTexto);
+        }
+
+        localStorage.setItem('carrito_productos', JSON.stringify(listaProductos));
+        
+        const paqueteOld = { items: listaProductos, total: totalAcumuladoOld };
+        localStorage.setItem('carrito_compartido_pos', JSON.stringify(paqueteOld));
+
+    } catch (err) {
+        console.error("Error controlado en transferencia de datos:", err);
+    }
+}
+
+
+function agregarProducto(codigo) {
+    const checkCanje = document.getElementById("es_canje_main");
+    const esCanje = checkCanje ? checkCanje.checked : false;
+
+    fetch("/carrito/agregar", {
+        method: "POST",
+        headers: {"Content-Type": "application/x-www-form-urlencoded"},
+        body: `codigo=${codigo}&cantidad=1&es_canje=${esCanje}`
+    })
+    .then(() => {
+        pushCarritoAlAlmacen();
+        setTimeout(() => { location.reload(); }, 50); // Delay estratégico para asegurar persistencia
+    })
+    .catch(() => {
+        location.reload();
+    });
+}
+
+function agregarManual() {
+    let desc = document.getElementById("manual_desc").value;
+    let precio = document.getElementById("manual_precio").value;
+    let cantidad = document.getElementById("manual_cantidad").value;
+
+    fetch("/carrito/agregar_manual", {
+        method: "POST",
+        headers: {"Content-Type": "application/x-www-form-urlencoded"},
+        body: `desc=${desc}&precio=${precio}&cantidad=${cantidad}`
+    })
+    .then(() => {
+        pushCarritoAlAlmacen();
+        setTimeout(() => { location.reload(); }, 50);
+    })
+    .catch(() => {
+        location.reload();
+    });
+}
+
+function abrirBuscador() {
+    const modal = document.getElementById("modalBuscador");
+    if (!modal) return;
+    modal.style.display = "flex";
+    document.getElementById("busqueda").focus();
+    activarBuscador();
+}
+
+function cerrarBuscador() {
+    const modal = document.getElementById("modalBuscador");
+    if (modal) modal.style.display = "none";
+}
+
+function alternarMetodoMixto() {
+    let metodo = document.getElementById("metodo_pago").value;
+    let contenedor = document.getElementById("contenedorMixto");
+    let recargoInput = document.getElementById("recargo");
+    
+    // 1. Si elige un método con recargo, pedir el porcentaje de forma proactiva
+    if (metodo === "tarjeta" || metodo === "qr" || metodo === "transferencia" || metodo === "mixto") {
+        let porcentajeSolicitado = prompt("Ingrese el porcentaje de RECARGO (%) para este método:", recargoInput.value || "0");
+        
+        if (porcentajeSolicitado !== null) {
+            let valorNum = parseFloat(porcentajeSolicitado);
+            recargoInput.value = isNaN(valorNum) ? 0 : valorNum;
+        } else {
+            recargoInput.value = 0;
+        }
+    } else {
+        recargoInput.value = 0;
+    }
+    
+    // 2. Control y renderizado del panel de desglose mixto
+    if (metodo === "mixto") {
+        contenedor.style.display = "block";
+        
+        // Calculamos el total de la venta considerando ya el recargo ingresado para pre-cargar el efectivo
+        let totalBase = parseFloat(document.getElementById("total").innerText || 0);
+        let descuento = parseFloat(document.getElementById("descuento").value || 0);
+        let recargo = parseFloat(recargoInput.value || 0);
+        let puntosCanje = parseFloat(document.getElementById("puntos_canje_dinero").value || 0);
+        
+        let totalConDescuento = totalBase - (totalBase * descuento / 100) - puntosCanje;
+        if (totalConDescuento < 0) totalConDescuento = 0;
+        
+        // El total final esperado en caja ya incluye el recargo aplicado globalmente
+        let totalConRecargo = totalConDescuento + (totalConDescuento * recargo / 100);
+
+        // Inicializamos todo el monto final directo en efectivo para que el cajero empiece a restar de ahí
+        document.getElementById("pago_efectivo").value = totalConRecargo.toFixed(2);
+        document.getElementById("pago_transferencia").value = 0;
+        document.getElementById("pago_tarjeta").value = 0;
+        document.getElementById("pago_qr").value = 0;
+        document.getElementById("pago_fiado").value = 0;
+    } else {
+        contenedor.style.display = "none";
+        document.getElementById("pago_efectivo").value = 0;
+        document.getElementById("pago_transferencia").value = 0;
+        document.getElementById("pago_tarjeta").value = 0;
+        document.getElementById("pago_qr").value = 0;
+        document.getElementById("pago_fiado").value = 0;
+    }
+
+    // 3. Forzar el recálculo matemático de la interfaz inmediatamente después de configurar los estados
+    calcularTotal();
+}
+
+function calcularTotal() {
+    let metodo = document.getElementById("metodo_pago").value;
+    let recargoBox = document.getElementById("recargoBox");
+    let total = parseFloat(document.getElementById("total").innerText || 0);
+    let recargo = parseFloat(document.getElementById("recargo").value || 0);
+    let descuento = parseFloat(document.getElementById("descuento").value || 0);
+    let puntosCanje = parseFloat(document.getElementById("puntos_canje_dinero").value || 0);
+    let btnFinalizar = document.getElementById("btnFinalizarVenta");
+
+    // Monitoreo de visores de pago QR para pantallas externas de clientes
+    if (metodo === "qr" || parseFloat(document.getElementById("pago_qr").value || 0) > 0) {
+        localStorage.setItem('solicitar_pago_qr', 'true');
+    } else {
+        localStorage.setItem('cerrar_pago_qr', 'true');
+    }
+
+    // Control de visibilidad del recuadro de recargo en el POS
+    if (metodo === "tarjeta" || metodo === "transferencia" || metodo === "qr" || metodo === "mixto") {
+        recargoBox.style.display = "block";
+    } else {
+        recargoBox.style.display = "none";
+        recargo = 0;
+    }
+
+    // 1. Calcular Neto aplicando Descuentos de sistema y Puntos acumulados
+    let totalConDescuento = total - (total * descuento / 100) - puntosCanje;
+    if (totalConDescuento < 0) totalConDescuento = 0;
+
+    // 2. Calcular el impacto del recargo (Aplica de forma global si el método requiere recargo)
+    let totalFinal = totalConDescuento + (totalConDescuento * recargo / 100);
+
+    // 3. Lógica de validación exclusiva para el Desglose Mixto
+    if (metodo === "mixto") {
+        let pEfectivo = parseFloat(document.getElementById("pago_efectivo").value || 0);
+        let pTransfe = parseFloat(document.getElementById("pago_transferencia").value || 0);
+        let pTarjeta = parseFloat(document.getElementById("pago_tarjeta").value || 0);
+        let pQr = parseFloat(document.getElementById("pago_qr").value || 0);
+        let pFiado = parseFloat(document.getElementById("pago_fiado").value || 0);
+
+        // Sumatoria del dinero físico y digital ingresado por el operador
+        let totalIngresado = pEfectivo + pTransfe + pTarjeta + pQr + pFiado;
+        let diferencia = totalFinal - totalIngresado;
+        let alertaBox = document.getElementById("estado_mixto_alerta");
+
+        if (Math.abs(diferencia) < 0.01) {
+            alertaBox.style.background = "#dcfce7";
+            alertaBox.style.color = "#166534";
+            alertaBox.innerText = "✅ Monto exacto cubierto";
+            btnFinalizar.disabled = false;
+            btnFinalizar.style.background = "#16a34a";
+            btnFinalizar.style.cursor = "pointer";
+        } else if (diferencia > 0) {
+            alertaBox.style.background = "#fee2e2";
+            alertaBox.style.color = "#991b1b";
+            alertaBox.innerText = `⚠️ Falta asignar: $${diferencia.toFixed(2)}`;
+            btnFinalizar.disabled = true;
+            btnFinalizar.style.background = "#94a3b8";
+            btnFinalizar.style.cursor = "not-allowed";
+        } else {
+            alertaBox.style.background = "#ffedd5";
+            alertaBox.style.color = "#9a3412";
+            alertaBox.innerText = `💰 Vuelto/Sobrante en caja: $${Math.abs(diferencia).toFixed(2)}`;
+            btnFinalizar.disabled = false;
+            btnFinalizar.style.background = "#16a34a";
+            btnFinalizar.style.cursor = "pointer";
+        }
+    } else {
+        // En flujos tradicionales el botón permanece siempre activo y desbloqueado
+        btnFinalizar.disabled = false;
+        btnFinalizar.style.background = "#16a34a";
+        btnFinalizar.style.cursor = "pointer";
+    }
+
+    if (totalFinal < 0) totalFinal = 0;
+    document.getElementById("totalFinal").innerText = totalFinal.toFixed(2);
+    
+    pushCarritoAlAlmacen();
+}
+
+
+// NUEVA FUNCIÓN COMODIDAD: Asigna el saldo faltante automáticamente calculando el recargo implicado
+function autoCompletarMetodo(idInput) {
+    let totalBase = parseFloat(document.getElementById("total").innerText || 0);
+    let descuento = parseFloat(document.getElementById("descuento").value || 0);
+    let recargoPct = parseFloat(document.getElementById("recargo").value || 0);
+    let puntosCanje = parseFloat(document.getElementById("puntos_canje_dinero").value || 0);
+    
+    let totalNeto = totalBase - (totalBase * descuento / 100) - puntosCanje;
+    
+    // Sumamos lo que ya se asignó en los OTROS inputs
+    let inputs = ['pago_efectivo', 'pago_transferencia', 'pago_tarjeta', 'pago_qr', 'pago_fiado'];
+    let yaAsignadoEfectivoYFiado = 0;
+    let yaAsignadoDigital = 0;
+
+    inputs.forEach(id => {
+        if (id !== idInput) {
+            let val = parseFloat(document.getElementById(id).value || 0);
+            if (id === 'pago_efectivo' || id === 'pago_fiado') {
+                yaAsignadoEfectivoYFiado += val;
+            } else {
+                yaAsignadoDigital += val;
+            }
+        }
+    });
+
+    let recargoDigitalExistente = yaAsignadoDigital * (recargoPct / 100);
+    let saldoFaltanteNeto = totalNeto + recargoDigitalExistente - (yaAsignadoEfectivoYFiado + yaAsignadoDigital);
+
+    if (saldoFaltanteNeto > 0) {
+        if (idInput === 'pago_efectivo' || idInput === 'pago_fiado') {
+            document.getElementById(idInput).value = saldoFaltanteNeto.toFixed(2);
+        } else {
+            // Si es tarjeta/transferencia/qr, el monto ingresado absorberá el recargo matemático correspondiente
+            let montoInyectar = saldoFaltanteNeto / (1 + (recargoPct / 100));
+            document.getElementById(idInput).value = montoInyectar.toFixed(2);
+        }
+    }
+    calcularTotal();
+}
+
+
+// 🌟 CICLO DE VIDA UNIFICADO DE EVENTOS (CON LIMPIEZA INMEDIATA PROACTIVA)
+window.addEventListener("DOMContentLoaded", () => {
+    // 1. Primero vaciamos o leemos la tabla para limpiar el visor en menos de 10ms
+    pushCarritoAlAlmacen();
+    
+    // 2. Luego calculamos los totales locales de la interfaz de la caja
+    if (typeof calcularTotal === 'function') {
+        calcularTotal();
+    }
+});
+
+window.addEventListener("load", () => {
+    // Refuerzo obligatorio a los 100ms para asegurar la limpieza total tras el dibujado de Flask
+    setTimeout(pushCarritoAlAlmacen, 100);
+});
+
+document.body.addEventListener("click", () => {
+    setTimeout(pushCarritoAlAlmacen, 50);
+});
+
+// ===================== F10 (TECLADO GLOBAL) =====================
+window.addEventListener("keydown", function (e) {
+    if (e.key === "F10") {
+        e.preventDefault();
+        abrirBuscador();
+    }
+});
+
+
+</script>
+
+<!-- ===================== MODAL BUSCADOR ===================== -->
+<div id="modalBuscador"
+     style="display:none;
+            position:fixed;
+            top:0;
+            left:0;
+            width:100%;
+            height:100%;
+            background:rgba(0,0,0,0.5);
+            justify-content:center;
+            align-items:center;
+            z-index:9999;">
+
+    <div style="background:white;padding:20px;border-radius:10px;width:600px;">
+        <h2>🔎 Buscar producto</h2>
+        <input type="text"
+               id="busqueda"
+               placeholder="Escribí nombre del producto..."
+               style="width:100%;padding:12px;margin-top:10px;">
+        <div id="resultados" style="margin-top:15px;max-height:300px;overflow:auto;"></div>
+        <button onclick="cerrarBuscador()" style="margin-top:10px;padding:8px 15px;">
+            Cerrar
+        </button>
+    </div>
+</div>
+
+{% endblock %}
