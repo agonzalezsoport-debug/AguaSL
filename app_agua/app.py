@@ -1,4 +1,6 @@
-
+app.py
+1
+100%
 from flask import Flask, render_template, request, redirect, session, flash
 import os
 from datetime import datetime
@@ -44,11 +46,9 @@ print(f"🌐 Intentando conectar a: {os.getenv('DB_CLOUD_HOST')}")
 
 app = Flask(__name__)
 
-# 3. SEGURIDAD Y VARIABLES (Blindaje de Producción para Render)
-app.secret_key = os.environ.get("SECRET_KEY") or os.getenv("SECRET_KEY", "clave_de_emergencia_")
-ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD") or os.getenv("ADMIN_PASSWORD", "")
-
-
+# 3. SEGURIDAD Y VARIABLES
+app.secret_key = os.getenv("SECRET_KEY", "clave_de_emergencia_")
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "")
 
 # 4. CARPETAS DE ARCHIVOS (Aseguramos que se creen en la ruta del programa)
 UPLOAD_FOLDER = os.path.join(BASE_DIR, 'static', 'productos')
