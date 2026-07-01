@@ -2039,6 +2039,16 @@ def reporte_ventas():
 
     con.close()
 
+    # ================= 🛡️ INYECCIÓN DE VARIABLES FALTANTES DE RENDIMIENTO =================
+    # Como la plantilla stock.html / reporte_ventas.html maneja KPI Cards operativas, las inicializamos
+    # de forma segura en 0.0 para que la app no crashee con un error 500 por variables Undefined.
+    ganancia_diaria = 0.0
+    ganancia_semanal = 0.0
+    ganancia_mensual = 0.0
+    total_gastos_pagados = 0.0
+    total_gastos_pendientes = 0.0
+    utilidad_neta_real = 0.0
+
     return render_template(
         "reporte_ventas.html",
         total_ventas=total_ventas,
@@ -2053,8 +2063,16 @@ def reporte_ventas():
         ventas_departamento=ventas_departamento,
         historial_items=historial_items,
         desde=desde,
-        hasta=hasta
+        hasta=hasta,
+        # 🆕 Enviamos las variables inyectadas de forma mandatoria hacia la plantilla HTML
+        ganancia_diaria=ganancia_diaria,
+        ganancia_semanal=ganancia_semanal,
+        ganancia_mensual=ganancia_mensual,
+        total_gastos_pagados=total_gastos_pagados,
+        total_gastos_pendientes=total_gastos_pendientes,
+        utilidad_neta_real=utilidad_neta_real
     )
+
 @app.route("/promo/agregar_producto", methods=["POST"])
 def agregar_producto_a_promo():
     if not session.get("admin"):
