@@ -1,6 +1,4 @@
-app.py
-1
-100%
+
 from flask import Flask, render_template, request, redirect, session, flash
 import os
 from datetime import datetime
