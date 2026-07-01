@@ -3054,7 +3054,7 @@ def stock():
         stock_val = int(request.form.get("stock") or 0)
 
         if not producto_id:
-            con.close()
+            if con: con.close()
             return "❌ ID inválido"
 
         try:
@@ -3068,8 +3068,9 @@ def stock():
 
             con.commit()
 
-            # 🔥 Sincronizar cambio a la nube
-            if internet_ok():
+            # 🔥 Sincronizar cambio a la nube (Solo si estás en la PC local)
+            # Si estás en Render, get_db() ya modificó Supabase de forma directa
+            if not os.environ.get("RENDER") and internet_ok():
                 try:
                     con_cloud = get_db_cloud()
                     cur_cloud = con_cloud.cursor()
@@ -3088,7 +3089,7 @@ def stock():
                     print("⚠️ Error sync update producto:", e)
 
         except Exception as e:
-            con.close()
+            if con: con.close()
             return f"❌ Error al actualizar: {e}"
 
     # ================= LISTAR PRODUCTOS =================
@@ -3097,11 +3098,30 @@ def stock():
         FROM productos
         ORDER BY descripcion
     """)
-    productos = cur.fetchall()
-
+    filas = cur.fetchall()
     con.close()
 
-    return render_template("stock.html", productos=productos)
+    # ================= 🛡️ MAPEADOR INTELIGENTE PARA JINJA2 =================
+    # Convierte el resultado en un diccionario con claves de texto para que
+    # no te tire el error de 'tuple object has no attribute stock' en Render.
+    productos_limpios = []
+    
+    for f in filas:
+        if os.environ.get("RENDER"):
+            # En Render (Supabase / psycopg2), f es una tupla pura. La ordenamos:
+            productos_limpios.append({
+                "id": f[0],
+                "codigo": f[1],
+                "descripcion": f[2],
+                "precio": f[3],
+                "stock": f[4]
+            })
+        else:
+            # En tu PC (SQLite), f ya es un Row factory. Lo convertimos de forma directa:
+            productos_limpios.append(dict(f))
+
+    # Enviamos los datos normalizados que la plantilla dibuja a la perfección
+    return render_template("stock.html", productos=productos_limpios)
 
 # ================== RUN ==================
 import threading
