@@ -44,13 +44,10 @@ print(f"🌐 Intentando conectar a: {os.getenv('DB_CLOUD_HOST')}")
 
 app = Flask(__name__)
 
-# 3. SEGURIDAD Y VARIABLES
-# ==========================================
-# 3. SEGURIDAD Y VARIABLES (Parche de producción)
-# ==========================================
-# Intentamos leer de Render (environ), si no existe busca en el .env (getenv)
+# 3. SEGURIDAD Y VARIABLES (Blindaje de Producción para Render)
 app.secret_key = os.environ.get("SECRET_KEY") or os.getenv("SECRET_KEY", "clave_de_emergencia_")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD") or os.getenv("ADMIN_PASSWORD", "")
+
 
 
 # 4. CARPETAS DE ARCHIVOS (Aseguramos que se creen en la ruta del programa)
