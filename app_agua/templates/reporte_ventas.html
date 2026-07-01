@@ -306,26 +306,30 @@
 {% endfor %}
 </tbody>
 </table>
-<!-- ================= TARJETAS DE GANANCIA TEMPORAL ================= -->
+<!-- ================= TARJETAS DE GANANCIA TEMPORAL BLINDADAS ================= -->
 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 15px; margin-bottom: 25px;">
     <div class="card" style="background: linear-gradient(135deg, #10b981, #059669); color: white; padding: 20px; border-radius: 12px; border: none; box-shadow: 0 4px 15px rgba(16,185,129,0.2);">
         <span style="font-size: 0.85rem; font-weight: bold; text-transform: uppercase; opacity: 0.8;">📈 Ganancia del Día (Hoy)</span>
-        <h2 style="margin: 8px 0; font-size: 1.8rem; font-weight: 800;">${{ "{:,.2f}".format(ganancia_diaria) }}</h2>
+        <!-- 🛡️ Filtro default(0) agregado -->
+        <h2 style="margin: 8px 0; font-size: 1.8rem; font-weight: 800;">${{ "{:,.2f}".format(ganancia_diaria | default(0)) }}</h2>
         <small style="opacity: 0.7;">Ventas líquidas de hoy menos costo de stock</small>
     </div>
     
     <div class="card" style="background: linear-gradient(135deg, #3b82f6, #1d4ed8); color: white; padding: 20px; border-radius: 12px; border: none; box-shadow: 0 4px 15px rgba(59,130,246,0.2);">
         <span style="font-size: 0.85rem; font-weight: bold; text-transform: uppercase; opacity: 0.8;">📆 Ganancia Semanal (7d)</span>
-        <h2 style="margin: 8px 0; font-size: 1.8rem; font-weight: 800;">${{ "{:,.2f}".format(ganancia_semanal) }}</h2>
+        <!-- 🛡️ Filtro default(0) agregado -->
+        <h2 style="margin: 8px 0; font-size: 1.8rem; font-weight: 800;">${{ "{:,.2f}".format(ganancia_semanal | default(0)) }}</h2>
         <small style="opacity: 0.7;">Acumulado móvil de la última semana</small>
     </div>
 
     <div class="card" style="background: linear-gradient(135deg, #8b5cf6, #6d28d9); color: white; padding: 20px; border-radius: 12px; border: none; box-shadow: 0 4px 15px rgba(139,92,246,0.2);">
         <span style="font-size: 0.85rem; font-weight: bold; text-transform: uppercase; opacity: 0.8;">📊 Ganancia Mensual (30d)</span>
-        <h2 style="margin: 8px 0; font-size: 1.8rem; font-weight: 800;">${{ "{:,.2f}".format(ganancia_mensual) }}</h2>
+        <!-- 🛡️ Filtro default(0) agregado -->
+        <h2 style="margin: 8px 0; font-size: 1.8rem; font-weight: 800;">${{ "{:,.2f}".format(ganancia_mensual | default(0)) }}</h2>
         <small style="opacity: 0.7;">Balance de rentabilidad de los últimos 30 días</small>
     </div>
 </div>
+
 
 <!-- ================= 🆕 BALANCE OPERATIVO DE GASTOS Y SERVICIOS ================= -->
 <h3>💸 Balance de Costos Operativos (Egresos en este período)</h3>
