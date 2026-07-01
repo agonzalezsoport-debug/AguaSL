@@ -306,28 +306,33 @@
 {% endfor %}
 </tbody>
 </table>
-<!-- ================= TARJETAS DE GANANCIA TEMPORAL BLINDADAS ================= -->
+<!-- ================= BALANCE OPERATIVO DE GASTOS Y SERVICIOS BLINDADO ================= -->
+<h3> Balance de Costos Operativos (Egresos en este período)</h3> 💸
 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 15px; margin-bottom: 25px;">
-    <div class="card" style="background: linear-gradient(135deg, #10b981, #059669); color: white; padding: 20px; border-radius: 12px; border: none; box-shadow: 0 4px 15px rgba(16,185,129,0.2);">
-        <span style="font-size: 0.85rem; font-weight: bold; text-transform: uppercase; opacity: 0.8;">📈 Ganancia del Día (Hoy)</span>
-        <!-- 🛡️ Filtro default(0) agregado -->
-        <h2 style="margin: 8px 0; font-size: 1.8rem; font-weight: 800;">${{ "{:,.2f}".format(ganancia_diaria | default(0)) }}</h2>
-        <small style="opacity: 0.7;">Ventas líquidas de hoy menos costo de stock</small>
-    </div>
-    
-    <div class="card" style="background: linear-gradient(135deg, #3b82f6, #1d4ed8); color: white; padding: 20px; border-radius: 12px; border: none; box-shadow: 0 4px 15px rgba(59,130,246,0.2);">
-        <span style="font-size: 0.85rem; font-weight: bold; text-transform: uppercase; opacity: 0.8;">📆 Ganancia Semanal (7d)</span>
-        <!-- 🛡️ Filtro default(0) agregado -->
-        <h2 style="margin: 8px 0; font-size: 1.8rem; font-weight: 800;">${{ "{:,.2f}".format(ganancia_semanal | default(0)) }}</h2>
-        <small style="opacity: 0.7;">Acumulado móvil de la última semana</small>
-    </div>
+ 
+ <!-- Tarjeta de Gastos Liquidados -->
+ <div class="card" style="background: linear-gradient(135deg, #ea580c, #c2410c); color: white; padding: 20px; border-radius: 12px; border: none; box-shadow: 0 4px 15px rgba(234,88,12,0.2);">
+ <span style="font-size: 0.85rem; font-weight: bold; text-transform: uppercase; opacity: 0.8;"> Gastos Operativos Pagados</span> 📉
+ <!-- 🛡️ Filtro default(0) agregado en la Línea 341 -->
+ <h2 style="margin: 8px 0; font-size: 1.8rem; font-weight: 800;">${{ "{:,.2f}".format(total_gastos_pagados | default(0)) }}</h2>
+ <small style="opacity: 0.7;">Servicios, alquileres y sueldos liquidados en este rango</small>
+ </div>
+ 
+ <!-- Tarjeta de Deudas por Pagar -->
+ <div class="card" style="background: linear-gradient(135deg, #dc2626, #991b1b); color: white; padding: 20px; border-radius: 12px; border: none; box-shadow: 0 4px 15px rgba(220,38,38,0.2);">
+ <span style="font-size: 0.85rem; font-weight: bold; text-transform: uppercase; opacity: 0.8;"> Cuentas por Pagar (Pendientes)</span> ❌
+ <!-- 🛡️ Filtro default(0) agregado -->
+ <h2 style="margin: 8px 0; font-size: 1.8rem; font-weight: 800;">${{ "{:,.2f}".format(total_gastos_pendientes | default(0)) }}</h2>
+ <small style="opacity: 0.7;">Boletas y alquileres registrados sin abonar</small>
+ </div>
 
-    <div class="card" style="background: linear-gradient(135deg, #8b5cf6, #6d28d9); color: white; padding: 20px; border-radius: 12px; border: none; box-shadow: 0 4px 15px rgba(139,92,246,0.2);">
-        <span style="font-size: 0.85rem; font-weight: bold; text-transform: uppercase; opacity: 0.8;">📊 Ganancia Mensual (30d)</span>
-        <!-- 🛡️ Filtro default(0) agregado -->
-        <h2 style="margin: 8px 0; font-size: 1.8rem; font-weight: 800;">${{ "{:,.2f}".format(ganancia_mensual | default(0)) }}</h2>
-        <small style="opacity: 0.7;">Balance de rentabilidad de los últimos 30 días</small>
-    </div>
+ <!-- Tarjeta de Rendimiento Neto Real -->
+ <div class="card" style="background: linear-gradient(135deg, #1e1b4b, #312e81); color: white; padding: 20px; border-radius: 12px; border: none; box-shadow: 0 4px 15px rgba(30,27,75,0.2);">
+ <span style="font-size: 0.85rem; font-weight: bold; text-transform: uppercase; opacity: 0.8;"> Rendimiento Comercial Neto</span> 🏆
+ <!-- 🛡️ Filtro default(0) agregado -->
+ <h2 style="margin: 8px 0; font-size: 1.8rem; font-weight: 800;">${{ "{:,.2f}".format(utilidad_neta_real | default(0)) }}</h2>
+ <small style="opacity: 0.7;">Ganancia líquida total descontando stock y gastos fijos</small>
+ </div>
 </div>
 
 
