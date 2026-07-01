@@ -1,3 +1,4 @@
+
 from flask import Flask, render_template, request, redirect, session, flash
 import os
 from datetime import datetime
@@ -15,35 +16,45 @@ import os
 from dotenv import load_dotenv  # <--- AGREGÁ ESTA LÍNEA ESPECÍFICAMENTE
 import psycopg2
 import sqlite3
+import threading
+from decimal import Decimal # Solo necesitamos este
+import webbrowser # <-- Agregá este import arriba de todo
+from werkzeug.security import check_password_hash
 
-# Ahora sí podés llamarla
-load_dotenv()
+import sys
+import os
+from dotenv import load_dotenv
+db_lock = threading.Lock()
 
-# Este print te va a confirmar si está leyendo bien el host o si sigue en None
+# 1. CONFIGURACIÓN DE RUTAS DINÁMICAS (Blindaje para .exe)
+if getattr(sys, 'frozen', False):
+    # Si es el ejecutable (.exe), la carpeta base es donde vive el .exe
+    BASE_DIR = os.path.dirname(sys.executable)
+else:
+    # Si es modo normal (python app.py), la carpeta es la del script
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Definimos rutas absolutas
+DB_PATH = os.path.join(BASE_DIR, "database.db")
+ENV_PATH = os.path.join(BASE_DIR, ".env")
+
+# 2. CARGA DE CONFIGURACIÓN
+load_dotenv(ENV_PATH) # Cargamos el archivo específico
 print(f"🌐 Intentando conectar a: {os.getenv('DB_CLOUD_HOST')}")
-
-
-
 
 app = Flask(__name__)
 
-# 🔥 CONFIGURACIÓN DE SEGURIDAD (Esto arregla el RuntimeError)
-# El segundo valor es un "plan B" por si el .env no carga
+# 3. SEGURIDAD Y VARIABLES
 app.secret_key = os.getenv("SECRET_KEY", "clave_de_emergencia_")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "")
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(BASE_DIR, "database.db")
-
-#  Estados corregidos (IMPORTANTE)
-ESTADOS_VALIDOS = ["pendiente", "enproceso", "entregado", "cancelado"]
-import os
-from werkzeug.utils import secure_filename
-
-# Configuración de carpeta para fotos (Crea la carpeta 'static/productos' si no existe)
-UPLOAD_FOLDER = 'static/productos'
+# 4. CARPETAS DE ARCHIVOS (Aseguramos que se creen en la ruta del programa)
+UPLOAD_FOLDER = os.path.join(BASE_DIR, 'static', 'productos')
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
+
+# Estados corregidos
+ESTADOS_VALIDOS = ["pendiente", "enproceso", "entregado", "cancelado"]
 
 
 
@@ -70,181 +81,230 @@ def get_db_local():
     con.execute("PRAGMA journal_mode=WAL;")
     return con
 
+
     
-import time
+import threading
 import json
-import decimal  # Necesario para procesar números de Supabase
-import sqlite3
-import psycopg2
+import time
+import os
+from decimal import Decimal
+
+# Candado para que solo corra UN worker a la vez en memoria
+worker_running_lock = threading.Lock()
 
 def sync_worker():
-    print("🚀 WORKER INICIADO Y ESPERANDO DATOS...")
-    while True:
-        try:
-            if not internet_ok():
-                time.sleep(5)
-                continue
+    if not worker_running_lock.acquire(blocking=False):
+        return
 
-            con = get_db_local()
-            cur = con.row_factory = sqlite3.Row # Aseguramos acceso por nombre de columna
-            cur = con.cursor()
-            
-            # Verificar registros pendientes (sync = 0)
-            cur.execute("SELECT COUNT(*) FROM sync_queue WHERE sync=0")
-            pendientes_row = cur.fetchone()
-            pendientes = pendientes_row[0] if pendientes_row else 0
-            
-            if pendientes > 0:
-                print(f"📦 Tienes {pendientes} registros pendientes por subir...")
-                cur.execute("SELECT * FROM sync_queue WHERE sync=0 LIMIT 50")
-                rows = cur.fetchall()
-            else:
-                rows = []
-            
-            con.close()
+    print("🚀 WORKER PRO: SUBIDA DINÁMICA + BAJADA CON ESCUDO (LOCK ACTIVADO)")
+    last_pull = 0
+    es_render = os.environ.get("RENDER")
 
-            if not rows:
-                time.sleep(10)
-                continue
+    try:
+        while True:
+            try:
+                if not internet_ok():
+                    time.sleep(10)
+                    continue
 
-            for row in rows:
-                id_queue = row["id"]
-                tabla = row["tabla"]
-                data = json.loads(row["data"])
-
-                print(f"🔄 SYNC: {tabla} (ID: {id_queue})")
-
-                con_cloud = None
-                try:
-                    con_cloud = get_db_cloud()
-                    cur_cloud = con_cloud.cursor()
-
-                    # ================= CAJA =================
-                    if tabla == "caja":
-                        cur_cloud.execute("""
-                            INSERT INTO caja(id, cajero, fecha_apertura, fecha_cierre, cierre, estado, monto_inicial, diferencia)
-                            VALUES (%s,%s,%s,%s,%s,%s,%s,%s) 
-                            ON CONFLICT (id) DO UPDATE SET
-                                fecha_cierre = EXCLUDED.fecha_cierre,
-                                cierre = EXCLUDED.cierre,
-                                estado = EXCLUDED.estado,
-                                diferencia = EXCLUDED.diferencia
-                        """, (data["id"], data.get("cajero"), data.get("fecha_apertura"), data.get("fecha_cierre"), data.get("cierre", 0), data.get("estado", "ABIERTA"), data.get("apertura", 0), data.get("diferencia", 0)))
-
-                    # ================= PRODUCTOS (RESTA STOCK) =================
-                    elif tabla == "productos":
-                        if "stock_restar" in data:
-                            # Lógica para descontar stock en Supabase
-                            cur_cloud.execute("""
-                                UPDATE productos 
-                                SET stock = stock - %s 
-                                WHERE id = %s
-                            """, (data["stock_restar"], data["id"]))
-                        else:
-                            # Lógica normal para insertar o editar producto
-                            cur_cloud.execute("""
-                                INSERT INTO productos(id, codigo, descripcion, litros, precio, stock, fecha, departamento, foto)
-                                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) 
-                                ON CONFLICT (id) DO UPDATE SET
-                                    precio = EXCLUDED.precio,
-                                    stock = EXCLUDED.stock,
-                                    descripcion = EXCLUDED.descripcion,
-                                    foto = EXCLUDED.foto
-                            """, (data["id"], data["codigo"], data["descripcion"], data["litros"], 
-                                  data["precio"], data["stock"], data["fecha"], data.get("departamento"), 
-                                  data.get("foto")))
-
-                    # ================= VENTAS =================
-                    elif tabla == "ventas":
-                        cur_cloud.execute("""
-                            INSERT INTO ventas(id, fecha, total, recargo, descuento, total_final, metodo_pago, cajero, caja_id)
-                            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (id) DO NOTHING
-                        """, (data["id"], data["fecha"], data["total"], data.get("recargo",0), data.get("descuento",0), data["total_final"], data["metodo_pago"], data["cajero"], data.get("caja_id")))
-
-                    # ================= VENTA ITEMS =================
-                    elif tabla == "venta_items":
-                        cur_cloud.execute("""
-                            INSERT INTO venta_items(id, venta_id, producto_id, cantidad, litros_total, subtotal)
-                            VALUES (%s,%s,%s,%s,%s,%s) ON CONFLICT (id) DO NOTHING
-                        """, (data["id"], data["venta_id"], data["producto_id"], data["cantidad"], data.get("litros_total",0), data["subtotal"]))
+                # ==========================================
+                # 1. SUBIDA (PUSH): De la PC a Supabase
+                # ==========================================
+                if not es_render:
+                    pendientes = []
+                    with db_lock:
+                        con_l = get_db_local()
+                        cur_l = con_l.cursor()
+                        cur_l.execute("SELECT id, tabla, data FROM sync_queue WHERE sync=0 ORDER BY id ASC LIMIT 50")
+                        originales = cur_l.fetchall()
                         
+                        if originales:
+                            pendientes = [dict(row) for row in originales]
+                            ids = [p["id"] for p in pendientes]
+                            placeholders = ",".join(["?"] * len(ids))
+                            con_l.execute(f"UPDATE sync_queue SET sync=2 WHERE id IN ({placeholders})", ids)
+                            con_l.commit()
+                        con_l.close()
 
-                    # ================= PEDIDOS =================
-                    elif tabla == "pedidos":
-                        cur_cloud.execute("""
-                            INSERT INTO pedidos (id, cliente_id, promo_id, fecha, estado)
-                            VALUES (%s, %s, %s, %s, %s)
-                            ON CONFLICT (id) DO UPDATE SET estado = EXCLUDED.estado
-                        """, (data["id"], data.get("cliente_id"), data.get("promo_id"), data.get("fecha"), data.get("estado", "Pendiente")))
+                    if pendientes:
+                        print(f"📦 Procesando {len(pendientes)} cambios pendientes...")
+                        con_cloud = get_db_cloud()
+                        cur_cloud = con_cloud.cursor()
+                        
+                        for row in pendientes:
+                            id_q, tabla, data_raw = row["id"], row["tabla"], row["data"]
+                            data = json.loads(data_raw)
+                            
+                            try:
+                                # --- 🛡️ NORMALIZACIÓN DE CAMPOS PARA "CAJA" ---
+                                if tabla == "caja":
+                                    if "apertura" in data:
+                                        data["monto_inicial"] = data.pop("apertura")
+                                    if "cierre" not in data: data["cierre"] = 0
+                                    if "diferencia" not in data: data["diferencia"] = 0
 
-                    # ================= USUARIOS =================
-                    elif tabla == "usuarios":
-                        cur_cloud.execute("""
-                            INSERT INTO usuarios (nombre, telefono, direccion, password)
-                            VALUES (%s, %s, %s, %s) ON CONFLICT (nombre) DO NOTHING
-                        """, (data["nombre"], data.get("telefono"), data.get("direccion"), data["password"]))
+                                # --- CASO A: DESCUENTO DE STOCK ---
+                                if tabla == "productos" and "stock_restar" in data:
+                                    cur_cloud.execute("""
+                                        UPDATE productos SET stock = stock - %s WHERE id = %s
+                                    """, (data["stock_restar"], data["id"]))
 
-                    # ================= CAJEROS =================
-                    elif tabla == "cajeros":
-                        cur_cloud.execute("""
-                            INSERT INTO cajeros(usuario, password, rol)
-                            VALUES (%s,%s,%s) ON CONFLICT (usuario) DO NOTHING
-                        """, (data["usuario"], data["password"], data.get("rol", "cajero")))
+                                # --- CASO B: ACTUALIZACIÓN DE PUNTOS ---
+                                elif tabla == "usuarios" and "puntos_balance" in data:
+                                    cur_cloud.execute("""
+                                        UPDATE usuarios 
+                                        SET puntos_acumulados = COALESCE(puntos_acumulados, 0) + %s 
+                                        WHERE id = %s
+                                    """, (data["puntos_balance"], data["id"]))
+                                
+                                # --- CASO C: SINCRONIZACIÓN DINÁMICA ---
+                                else:
+                                    columnas = [k for k in data.keys() if k not in ['stock_restar', 'puntos_balance']]
+                                    
+                                    # 🔥 MEJORA CRÍTICA: Convertir strings vacíos en NULL para campos numéricos (cliente_id, etc)
+                                    valores = []
+                                    for k in columnas:
+                                        valor = data[k]
+                                        # Si el valor es un string vacío, lo mandamos como None para que SQL lo tome como NULL
+                                        if valor == "" or valor == " ":
+                                            valor = None
+                                        valores.append(valor)
 
-                    # ================= PROMOS =================
-                    elif tabla == "promos":
-                        cur_cloud.execute("INSERT INTO promos(id, nombre, descripcion, precio, activa) VALUES (%s,%s,%s,%s,%s) ON CONFLICT (id) DO NOTHING", 
-                                        (data["id"], data["nombre"], data["descripcion"], data["precio"], data["activa"]))
+                                    placeholders = ", ".join(["%s"] * len(valores))
+                                    nombres_cols = ", ".join(columnas)
+                                    update_stmt = ", ".join([f"{k}=EXCLUDED.{k}" for k in columnas if k != 'id'])
 
-                    elif tabla == "litros_control":
-                        cur_cloud.execute("INSERT INTO litros_control(litros, fecha) VALUES (%s,%s)", (data["litros"], data["fecha"]))
+                                    query = f"""
+                                        INSERT INTO {tabla} ({nombres_cols}) 
+                                        VALUES ({placeholders})
+                                        ON CONFLICT (id) DO UPDATE SET {update_stmt}
+                                    """
+                                    cur_cloud.execute(query, valores)
 
-                    # MANDAR CAMBIOS A LA NUBE
-                    con_cloud.commit()
-                    
-                    # MARCAR SYNC LOCAL
-                    con_loc = get_db_local()
-                    cur_loc = con_loc.cursor()
-                    cur_loc.execute("UPDATE sync_queue SET sync=1 WHERE id=?", (id_queue,))
-                    con_loc.commit()
-                    con_loc.close()
-                    print(f"✅ OK: {tabla} sincronizada correctamente")
+                                con_cloud.commit()
 
-                except Exception as e:
-                    print(f"❌ ERROR EN {tabla}: {e}")
-                    if con_cloud: con_cloud.rollback()
-                finally:
-                    if con_cloud: con_cloud.close()
+                                with db_lock:
+                                    con_upd = get_db_local()
+                                    con_upd.execute("UPDATE sync_queue SET sync=1 WHERE id=?", (id_q,))
+                                    con_upd.commit()
+                                    con_upd.close()
+                                
+                                print(f"  ✅ {tabla} sincronizado correctamente.")
 
+                            except Exception as e_row:
+                                con_cloud.rollback()
+                                print(f"  ❌ Error subiendo {tabla} (ID Cola: {id_q}): {e_row}")
+                                with db_lock:
+                                    con_fail = get_db_local()
+                                    con_fail.execute("UPDATE sync_queue SET sync=0 WHERE id=?", (id_q,))
+                                    con_fail.commit()
+                                    con_fail.close()
+                        
+                        con_cloud.close()
+
+                # ==========================================
+                # 2. BAJADA (PULL): De Supabase a la PC
+                # ==========================================
+                if not es_render and (time.time() - last_pull > 60):
+                    print("⬇️ Sincronizando desde Supabase (Bajada)...")
+                    try:
+                        con_c = get_db_cloud()
+                        cur_c = con_c.cursor()
+                        tablas_bajar = ["productos", "cajeros", "ventas", "venta_items", "promos", "usuarios", "caja", "pedidos"]
+                        
+                        for t in tablas_bajar:
+                            try:
+                                cur_c.execute(f"SELECT * FROM {t}")
+                                cols = [desc[0] for desc in cur_c.description]
+                                rows_nube = cur_c.fetchall()
+
+                                with db_lock:
+                                    con_loc = get_db_local()
+                                    for r_nube in rows_nube:
+                                        r_dict = dict(zip(cols, r_nube))
+                                        rid = str(r_dict.get('id'))
+
+                                        cur_check = con_loc.execute(
+                                            "SELECT 1 FROM sync_queue WHERE tabla=? AND sync IN (0,2) AND data LIKE ?", 
+                                            (t, f'%"{rid}"%')
+                                        )
+                                        if cur_check.fetchone(): continue
+
+                                        vals_limpios = [float(v) if isinstance(v, Decimal) else v for v in r_nube]
+                                        phs = ",".join(["?"] * len(cols))
+                                        con_loc.execute(f"INSERT OR REPLACE INTO {t} ({','.join(cols)}) VALUES ({phs})", vals_limpios)
+                                    
+                                    con_loc.commit()
+                                    con_loc.close()
+                            except Exception as e_tabla:
+                                print(f"  ⚠️ Saltando tabla {t} en bajada: {e_tabla}")
+
+                        con_c.close()
+                        last_pull = time.time()
+                        print("🔄 PC sincronizada con éxito.")
+                    except Exception as e_pull:
+                        print(f"🔥 Error en bloque de bajada: {e_pull}")
+
+            except Exception as e_global:
+                print(f"🆘 Error Crítico en Worker: {e_global}")
+            
+            time.sleep(15)
+
+    finally:
+        worker_running_lock.release()
+
+
+def save_offline_batch(lista_cambios):
+    """Guarda múltiples cambios en la cola de sincronización de un solo golpe."""
+    with db_lock: # Asegúrate de tener db_lock definido al inicio de tu app.py
+        con = None
+        try:
+            con = get_db_local()
+            cur = con.cursor()
+            for tabla, accion, data in lista_cambios:
+                cur.execute("""
+                    INSERT INTO sync_queue (tabla, accion, data, sync) 
+                    VALUES (?, ?, ?, 0)
+                """, (tabla, accion, json.dumps(data)))
+            con.commit()
+            print(f"📦 {len(lista_cambios)} cambios guardados en lote.")
         except Exception as e:
-            print(f"🔥 ERROR GLOBAL: {e}")
+            print(f"❌ Error en lote: {e}")
+        finally:
+            if con: con.close()
+
         
-        time.sleep(5)
+def subir_puntos_inmediato(cliente_id, balance):
+    """Intenta subir puntos a Supabase en tiempo real sin bloquear la venta local."""
+    if not cliente_id: return
+    try:
+        con_cloud = get_db_cloud() # Tu función de conexión a la nube
+        cur_cloud = con_cloud.cursor()
+        cur_cloud.execute("""
+            UPDATE usuarios 
+            SET puntos_acumulados = COALESCE(puntos_acumulados, 0) + %s 
+            WHERE id = %s
+        """, (balance, cliente_id))
+        con_cloud.commit()
+        con_cloud.close()
+        print(f"🚀 Puntos ({balance}) subidos a Supabase en tiempo real.")
+    except Exception as e:
+        print(f"⚠️ Nube ocupada o sin internet. Los puntos viajarán por el Worker: {e}")
+        # Si falla, el balance se enviará después vía save_offline_batch que ya está en la ruta
+
+
+
+
+
 
 def get_db():
-    # 1. Si estamos en RENDER (nube), conectamos a Supabase usando variables de entorno
+    # 1. Si estamos en RENDER, conectamos a Supabase
     if os.environ.get("RENDER"):
-        try:
-            return psycopg2.connect(
-                host=os.getenv("DB_CLOUD_HOST"),
-                dbname=os.getenv("DB_CLOUD_NAME"),
-                user=os.getenv("DB_CLOUD_USER"),
-                password=os.getenv("DB_CLOUD_PASS"),
-                port=os.getenv("DB_CLOUD_PORT", 6543),
-                sslmode="require"
-            )
-        except Exception as e:
-            print(f"❌ Error conexión Supabase en Render: {e}")
-            return None
+        return get_db_cloud() # Usamos la función que ya tenés definida
 
-    # 2. Si estamos en PC LOCAL, usamos SQLite
-    con = sqlite3.connect(DB_PATH, timeout=30)
-    con.row_factory = sqlite3.Row
-    try:
-        con.execute("PRAGMA journal_mode=WAL;")
-    except:
-        pass
-    return con
+    # 2. Si estamos en PC LOCAL, usamos ÚNICAMENTE SQLite
+    # Esto asegura que Flask jamás intente conectar a la nube
+    return get_db_local() 
 
 
 def ejecutar(cur, conn, query, params=None):
@@ -271,17 +331,21 @@ def ejecutar(cur, conn, query, params=None):
         print("ERROR:", e)
         raise
 def save_offline(tabla, accion, data):
-    con = get_db_local()
-    cur = con.cursor()
+    try:
+        # Usamos el lock para que Flask no choque con el Worker al escribir
+        with db_lock:
+            con = get_db_local()
+            cur = con.cursor()
+            cur.execute("""
+                INSERT INTO sync_queue (tabla, accion, data, sync) 
+                VALUES (?, ?, ?, 0)
+            """, (tabla, accion, json.dumps(data)))
+            con.commit()
+            con.close()
+        print(f"📦 Cambio guardado en cola: {tabla} -> {accion}")
+    except Exception as e:
+        print(f"❌ ERROR al guardar en sync_queue: {e}")
 
-    cur.execute("""
-        INSERT INTO sync_queue(tabla, accion, data, sync)
-        VALUES (?, ?, ?, 0)
-    """, (tabla, accion, json.dumps(data)))  # ✅ FIX
-
-    con.commit()
-    con.close()
-import requests
 
 def internet_ok():
     try:
@@ -331,7 +395,7 @@ def sync_producto_to_cloud(id, codigo, descripcion, litros, precio, stock, fecha
             "precio": precio,
             "stock": stock,
             "fecha": fecha,
-            "departamento": departamento   # 🔥 IMPORTANTE
+            "departamento": departamento  
         })
 
 def sync_venta_to_cloud(venta_id, fecha, total, recargo, descuento, total_final, metodo_pago, cajero, items):
@@ -409,84 +473,6 @@ def sync_venta_to_cloud(venta_id, fecha, total, recargo, descuento, total_final,
             item_fixed = dict(item)
             item_fixed["venta_id"] = venta_id
             save_offline("venta_items", "insert", item_fixed)
-# ================== ACCIÓN: FORZAR CIERRE DE CAJA HÍBRIDO (LOCAL / RENDER) ==================
-# Corrección Crítica: Añadimos methods=["POST"] para solucionar el error Method Not Allowed
-@app.route("/admin/forzar_cierre_caja/<id>", methods=["POST"])
-def forzar_cierre_caja(id):
-    if not session.get("admin"):
-        return "No tenés permisos para realizar esta acción", 403
-
-    # Capturamos el monto real que el administrador escribió en el prompt de la pantalla
-    monto_cierre_real = float(request.form.get("monto_cierre_real") or 0)
-
-    fecha_actual = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    con = get_db()  # Conecta dinámicamente a la DB correspondiente según el entorno (Render o Local)
-    cur = con.cursor()
-
-    try:
-        # 1. Obtener el monto inicial de la caja seleccionada
-        ejecutar(cur, con, "SELECT monto_inicial FROM caja WHERE id = %s", (id,))
-        caja_row = cur.fetchone()
-        
-        if not caja_row:
-            con.close()
-            return "La caja especificada no existe", 404
-            
-        # Extracción segura: Postgres devuelve tupla, SQLite devuelve objeto Row
-        if isinstance(caja_row, (list, tuple)):
-            monto_inicial = float(caja_row[0] or 0)
-        else:
-            monto_inicial = float(caja_row["monto_inicial"] or 0)
-
-        # 2. Calcular la sumatoria de ventas de ESTA caja únicamente
-        ejecutar(cur, con, "SELECT COALESCE(SUM(total_final), 0) FROM ventas WHERE caja_id = %s", (id,))
-        ventas_row = cur.fetchone()
-        
-        if isinstance(ventas_row, (list, tuple)):
-            total_ventas = float(ventas_row[0] or 0)
-        else:
-            # En SQLite Row tomamos la primera columna por índice directo
-            total_ventas = float(ventas_row[0] or 0)
-
-        # 3. Calcular los montos del arqueo definitivo con la diferencia real en Render
-        total_esperado = monto_inicial + total_ventas
-        # Diferencia matemática: Dinero Real ingresado por el Admin MENOS el Dinero Esperado por el sistema
-        diferencia = monto_cierre_real - total_esperado
-
-        # 4. Modificar el registro en la base de datos (Postgres en la nube o SQLite local)
-        ejecutar(cur, con, """
-            UPDATE caja 
-            SET estado = 'CERRADA', 
-                fecha_cierre = %s, 
-                cierre = %s, 
-                diferencia = %s 
-            WHERE id = %s
-        """, (fecha_actual, monto_cierre_real, diferencia, id))
-        
-        con.commit()
-        
-        # 5. Si estás trabajando localmente, encolamos el cambio para Supabase
-        # Si estás directamente en Render, no hace falta encolar en sync_queue
-        if not os.environ.get("RENDER"):
-            datos_sync = {
-                "id": id,
-                "estado": "CERRADA",
-                "fecha_cierre": fecha_actual,
-                "cierre": monto_cierre_real,
-                "diferencia": diferencia
-            }
-            save_offline("caja", "update", datos_sync)
-            
-        print(f"🔒 ¡ÉXITO! Caja {id} cerrada de manera exitosa en el entorno activo.")
-        
-    except Exception as e:
-        con.rollback()
-        print(f"❌ Error crítico al forzar cierre de caja: {e}")
-    finally:
-        con.close()
-
-    return redirect("/admin/cierres_caja")
-
             
 
             
@@ -497,18 +483,75 @@ def ver_carrito():
     carrito = session.get("carrito_cliente", [])
     total = sum(item['precio'] * item['cantidad'] for item in carrito)
     return render_template("carrito.html", carrito=carrito, total=total)
-@app.route("/carrito/eliminar/<int:index>")
-def carrito_eliminar(index):
-    carrito = session.get("carrito", [])
-    
-    # Verificamos que el índice exista para que no explote
-    if 0 <= index < len(carrito):
-        item_eliminado = carrito.pop(index)
-        session["carrito"] = carrito
-        session.modified = True
-        print(f"🗑️ Ítem eliminado del carrito: {item_eliminado['desc']}")
-    
-    return redirect("/ventas_ui")
+
+# --- VACIAR CARRITO ---
+@app.route("/carrito/vaciar")
+def vaciar_carrito():
+    session.pop("carrito_cliente", None)
+    return redirect("/tienda")
+from flask import jsonify
+
+import json
+import os
+from flask import jsonify, Response
+
+@app.route('/api/obtener_productos_stock', methods=['GET'])
+def api_obtener_productos_stock():
+    try:
+        with db_lock:
+            con = get_db()
+            cur = con.cursor()
+            # Seleccionamos explícitamente el código de barras/interno
+            cur.execute("SELECT id, codigo, descripcion, precio, stock FROM productos WHERE stock > 0 ORDER BY descripcion ASC")
+            filas = cur.fetchall()
+            con.close()
+        
+        lista_productos = []
+        archivos_en_disco = os.listdir(UPLOAD_FOLDER) if os.path.exists(UPLOAD_FOLDER) else []
+        
+        for fila in filas:
+            datos_fila = dict(fila)
+            id_prod = str(datos_fila["id"])
+            codigo_prod = str(datos_fila["codigo"]) if datos_fila["codigo"] else ""
+            
+            nombre_imagen = ""
+            for archivo in archivos_en_disco:
+                archivo_min = archivo.lower()
+                if archivo_min.startswith(id_prod.lower()) or (codigo_prod and archivo_min.startswith(codigo_prod.lower())):
+                    nombre_imagen = archivo
+                    break
+
+            lista_productos.append({
+                "id": id_prod,
+                "codigo": codigo_prod, # 🔥 ENVIAMOS EL CÓDIGO DE BARRAS REAL
+                "nombre": str(datos_fila["descripcion"]),
+                "precio": float(datos_fila["precio"]) if datos_fila["precio"] is not None else 0.0,
+                "stock": int(datos_fila["stock"]) if datos_fila["stock"] is not None else 0,
+                "imagen": nombre_imagen 
+            })
+            
+        data_json = json.dumps(lista_productos, ensure_ascii=False)
+        return Response(data_json, mimetype='application/json', status=200)
+        
+    except Exception as e:
+        print(f"❌ Error crítico en API de ofertas: {e}")
+        error_json = json.dumps({"error": str(e)}, ensure_ascii=False)
+        return Response(error_json, mimetype='application/json', status=500)
+@app.route('/visor_publico_ofertas')
+def visor_publico_ofertas():
+    # Renderiza de forma segura la nueva plantilla aislada
+    return render_template("visor_publico.html")
+
+
+@app.route("/")
+def index():
+    con = get_db_local()
+    cur = con.cursor()
+    # El orden es: 0=descripción, 1=precio, 2=foto
+    cur.execute("SELECT descripcion, precio, foto FROM productos LIMIT 3")
+    lista_productos = cur.fetchall()
+    con.close()
+    return render_template("index.html", productos=lista_productos)
 @app.route('/api/pedidos/count')
 def count_pedidos():
     con = None
@@ -527,52 +570,56 @@ def count_pedidos():
         return {"cantidad": 0}
     finally:
         if con: con.close()
+@app.route("/pedidos/limpiar_entregados", methods=["POST"])
+def limpiar_pedidos_entregados():
+    if not session.get("admin") and not session.get("puede_ver_pedidos"):
+        return "❌ Sin permisos", 403
 
-# --- VACIAR CARRITO ---
-@app.route("/carrito/vaciar")
-def vaciar_carrito():
-    session.pop("carrito_cliente", None)
-    return redirect("/tienda")
-@app.route("/api/cliente/validar_puntos/<int:cliente_id>")
-def validar_puntos(cliente_id):
+    con = get_db()
+    cur = con.cursor()
+
     try:
-        # 1. Conectamos a Supabase
-        con = get_db_cloud()
-        cur = con.cursor()
+        # 1. Borramos físicamente los entregados
+        ejecutar(cur, con, "DELETE FROM pedidos WHERE estado = 'entregado'")
+        con.commit()
 
-        # 2. Consultamos los puntos del cliente
-        cur.execute("""
-            SELECT COALESCE(puntos_acumulados, 0) 
-            FROM usuarios 
-            WHERE id = %s
-        """, (cliente_id,))
-        
-        resultado = cur.fetchone()
-        con.close()
-
-        # Si el cursor devuelve una tupla, extraemos el primer valor
-        puntos = resultado[0] if resultado else 0
-
-        # 3. Retornamos los datos que el JavaScript está esperando
-        return jsonify({
-            "puntos": puntos,
-            "descuento_disponible": puntos  # Aquí 1 punto = $1
-        })
+        # 2. 🔥 SYNC: Informamos a la cola offline para que los borre de la nube también
+        save_offline("pedidos", "delete_completed", {"estado": "entregado"})
 
     except Exception as e:
-        print(f"❌ Error en API de puntos: {e}")
-        return jsonify({"puntos": 0, "descuento_disponible": 0}), 500
+        if con: con.rollback()
+        return f"❌ Error al limpiar: {e}"
+    finally:
+        if con: con.close()
+
+    return redirect("/pedidos")
+@app.route('/api/stock/critico')
+def stock_critico():
+    con = None
+    try:
+        con = get_db()
+        cur = con.cursor()
+        # Buscamos productos donde el stock sea menor a 5 (puedes cambiar este número)
+        ejecutar(cur, con, "SELECT nombre, stock FROM productos WHERE stock < 5")
+        productos = cur.fetchall()
+        
+        # Formateamos para que el JS lo entienda fácil
+        lista = [{"nombre": p[0], "stock": p[1]} for p in productos]
+        return {"productos": lista}
+    except Exception as e:
+        return {"productos": []}
+    finally:
+        if con: con.close()
 
 
-@app.route("/")
-def index():
-    con = get_db_local()
-    cur = con.cursor()
-    # El orden es: 0=descripción, 1=precio, 2=foto
-    cur.execute("SELECT descripcion, precio, foto FROM productos LIMIT 3")
-    lista_productos = cur.fetchall()
-    con.close()
-    return render_template("index.html", productos=lista_productos)
+
+
+
+
+
+
+
+
 @app.route("/tienda")
 def tienda():
     con = get_db()
@@ -599,7 +646,7 @@ def agregar_cliente():
     telefono = request.form.get("telefono")
     direccion = request.form.get("direccion")
 
-    # 🔥 SOLUCIÓN AL ERROR
+    
     password = str(uuid.uuid4())[:8]
 
     if not nombre:
@@ -644,7 +691,7 @@ def eliminar_cajero(id):
     finally:
         con.close()
 
-    return redirect("/cajeros") # Asegurate que esta ruta sea la que muestra la tabla
+    return redirect("/cajeros") 
 
 
 
@@ -695,7 +742,7 @@ def editar_cliente(id):
         con.close()
         return redirect("/clientes")
 
-    # GET → cargar datos
+    #cargar datos
     ejecutar(cur, con, "SELECT * FROM usuarios WHERE id=%s", (id,))
     cliente = cur.fetchone()
     con.close()
@@ -708,28 +755,28 @@ def dashboard_litros():
     con = get_db()
     cur = con.cursor()
     
-    # 🔹 Vendidos
+    #  Vendidos
     ejecutar(cur, con, """
         SELECT COALESCE(SUM(vi.litros_total), 0) 
         FROM venta_items vi
     """)
     vendidos = cur.fetchone()[0] or 0
 
-    # 🔹 Cargados
+    #  Cargados
     ejecutar(cur, con, "SELECT COALESCE(SUM(litros), 0) FROM litros_control")
     cargados = cur.fetchone()[0] or 0
 
-    # 🔹 Historial
+    #  Historial
     ejecutar(cur, con, "SELECT litros, fecha FROM litros_control ORDER BY id DESC LIMIT 20")
     historial = cur.fetchall()
 
-    # 🔥 NORMALIZAR (LA CLAVE)
+    #  NORMALIZAR (LA CLAVE)
     cargados = Decimal(str(cargados))
     vendidos = Decimal(str(vendidos))
 
     diferencia = cargados - vendidos
 
-    # 🔹 Para gráfico
+    #  Para gráfico
     historial_json = [
         {"litros": float(h[0]), "fecha": h[1]} 
         for h in historial
@@ -759,7 +806,7 @@ def agregar_litros():
     con.commit()
     con.close()
 
-    # 🔥 SYNC: Mandar a la cola para Supabase
+    #  SYNC: Mandar a la cola para Supabase
     save_offline("litros_control", "insert", {
         "litros": litros,
         "fecha": fecha
@@ -802,224 +849,265 @@ def buscar_productos():
 
     con.close()
     return jsonify(data)
-@app.route("/pedidos/limpiar_entregados", methods=["POST"])
-def limpiar_pedidos_entregados():
-    if not session.get("admin") and not session.get("puede_ver_pedidos"):
-        return "❌ Sin permisos", 403
-
-    con = get_db()
-    cur = con.cursor()
-
-    try:
-        # 1. Borramos físicamente los entregados
-        ejecutar(cur, con, "DELETE FROM pedidos WHERE estado = 'entregado'")
-        con.commit()
-
-        # 2. 🔥 SYNC: Informamos a la cola offline para que los borre de la nube también
-        save_offline("pedidos", "delete_completed", {"estado": "entregado"})
-
-    except Exception as e:
-        if con: con.rollback()
-        return f"❌ Error al limpiar: {e}"
-    finally:
-        if con: con.close()
-
-    return redirect("/pedidos")
-
 
 # ================== LOGIN ADMIN ==================
+from werkzeug.security import check_password_hash
+
+# ================== LOGIN ADMIN CON CONTROL DE CAJA ==================
+from werkzeug.security import check_password_hash
+
+# ================== LOGIN ADMIN DETECTA CAJA AL ENTRAR ==================
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
         password_ingresada = request.form.get("password")
-
-        # 1. Verificamos si existe el usuario 'admin' en la DB
-        con = get_db() # Usamos get_db() para la conexión de Render
+        con = get_db_local()
         cur = con.cursor()
         
         try:
-            # Usamos ejecutar y %s para que sea compatible en Render/Postgres
-            ejecutar(cur, con, "SELECT nombre FROM usuarios WHERE nombre = %s", ("admin",))
-            usuario = cur.fetchone()
+            cur.execute("SELECT password FROM usuarios WHERE nombre = ?", ("admin",))
+            row = cur.fetchone()
         except Exception as e:
-            print(f"🔥 Error en query de login: {e}")
-            return "❌ Error interno de base de datos", 500
+            print(f" Error en query login: {e}")
+            return "Error interno", 500
         finally:
             con.close()
-
-        if usuario:
-            # 2. VALIDACIÓN CLAVE contra tu variable del .env
-            if password_ingresada == ADMIN_PASSWORD:
+            
+        if row:
+            # Al usar Row, accedemos por nombre de columna o índice
+            hash_db = row["password"] if "password" in row.keys() else row[0]
+            
+            if check_password_hash(hash_db, password_ingresada):
                 session["admin"] = True
-                session.permanent = True 
+                session.permanent = True
                 
-                # ================= CONTROL INMEDIATO DE CAJA EN RENDER =================
-                con_check = get_db()
+                # REVISIÓN INMEDIATA DE CAJA
+                con_check = get_db_local()
                 cur_check = con_check.cursor()
-                
-                # Buscamos si existe alguna caja en estado ABIERTA
-                ejecutar(cur_check, con_check, """
+                cur_check.execute("""
                     SELECT id, "cajero", fecha_apertura, monto_inicial 
                     FROM caja 
-                    WHERE TRIM(UPPER(estado)) = %s 
+                    WHERE TRIM(UPPER(estado)) = 'ABIERTA' 
                     LIMIT 1
-                """, ('ABIERTA',))
-                
+                """)
                 caja_abierta = cur_check.fetchone()
                 con_check.close()
                 
-                # 3. Si Postgres encuentra una fila activa, disparamos la alerta visual
                 if caja_abierta:
-                    # EXTRACCIÓN POSICIONAL PURA PARA POSTGRES EN RENDER
-                    id_caja = caja_abierta[0]
-                    usuario_caja = caja_abierta[1]
-                    fecha_caja = caja_abierta[2]
-                    monto_caja = caja_abierta[3]
+                    # Convertimos de sqlite3.Row a diccionario nativo de Python de forma limpia
+                    datos_caja = dict(caja_abierta)
+                    
+                    id_caja = datos_caja["id"]
+                    usuario_caja = datos_caja["cajero"]
+                    fecha_caja = datos_caja["fecha_apertura"]
+                    monto_caja = datos_caja["monto_inicial"]
                     
                     try:
                         monto_formateado = f"${float(monto_caja):,.2f}"
                     except (ValueError, TypeError):
                         monto_formateado = f"${monto_caja}"
                         
-                    # Devuelve el script que muestra el aviso antes de entrar al panel
+                    # Detiene la carga y muestra el cartel. Al dar 'Aceptar', va al dashboard.
                     return f"""
                     <script>
-                        alert("⚠️ CONTROL DE CAJAS AL INICIAR (ADMIN):\\n\\nIngresaste correctamente, pero el sistema detectó una caja activa.\\n\\n• N° de Caja: {id_caja}\\n• Cajero a cargo: {usuario_caja}\\n• Apertura: {fecha_caja}\\n• Monto Inicial: {monto_formateado}\\n\\nRecordá que debés supervisar su cierre desde el historial.");
+                        alert("⚠️ CONTROL DE CAJAS AL INICIAR:\\n\\nIngresaste correctamente, pero hay una caja activa en el sistema.\\n\\n• N° de Caja: {id_caja}\\n• Cajero a cargo: {usuario_caja}\\n• Fecha/Hora Apertura: {fecha_caja}\\n• Monto Inicial: {monto_formateado}\\n\\nRecordá supervisar el cierre antes de finalizar el turno.");
                         window.location.href = "/dashboard";
                     </script>
                     """
                 
-                # Si no hay ninguna caja activa, ingresa directo al panel
                 return redirect("/dashboard")
             else:
-                return "❌ Clave incorrecta"
+                return "Clave incorrecta"
         else:
-            return "❌ El usuario administrador no existe en la base de datos"
-
+            return "El usuario administrador no existe"
+            
     return render_template("login.html")
+
+
 
 
 import os
 
+from werkzeug.security import generate_password_hash
+
 @app.route("/admin/cambiar_clave", methods=["GET", "POST"])
 def cambiar_clave():
-    # 1. LA DECLARACIÓN GLOBAL VA PRIMERO QUE NADA
-    global ADMIN_PASSWORD 
-
-    # Seguridad: si no es admin, afuera
-    if not session.get("admin"):
-        return redirect("/login")
+    if not session.get("admin"): return redirect("/login")
 
     if request.method == "POST":
-        actual = request.form.get("clave_actual")
         nueva = request.form.get("nueva_clave")
+        
+        #  GENERAMOS EL HASH (Esto convierte "1234" en algo como "pbkdf2:sha256:...")
+        password_encriptada = generate_password_hash(nueva)
 
-        # 2. Ahora sí podés usarla y modificarla
-        if actual != ADMIN_PASSWORD:
-            flash("❌ La clave actual es incorrecta")
-            return redirect("/admin/cambiar_clave")
-
-        # Actualizar en memoria
-        ADMIN_PASSWORD = nueva
-
-        # 3. Guardar en el archivo .env (el resto del código sigue igual...)
-        try:
-            lineas = []
-            if os.path.exists(".env"):
-                with open(".env", "r") as f:
-                    lineas = f.readlines()
-
-            with open(".env", "w") as f:
-                encontrado = False
-                for linea in lineas:
-                    if linea.startswith("ADMIN_PASSWORD="):
-                        f.write(f"ADMIN_PASSWORD={nueva}\n")
-                        encontrado = True
-                    else:
-                        f.write(linea)
-                if not encontrado:
-                    f.write(f"ADMIN_PASSWORD={nueva}\n")
+        with db_lock:
+            con = get_db_local()
+            # Guardamos el hash en la DB local
+            con.execute("UPDATE usuarios SET password = ? WHERE nombre = 'admin'", (password_encriptada,))
             
-            flash("✅ Clave actualizada con éxito")
-            return redirect("/dashboard")
-        except Exception as e:
-            flash(f"⚠️ Error al guardar: {e}")
+            # Encolamos el cambio para Supabase
+            data_sync = json.dumps({"nombre": "admin", "password": password_encriptada})
+            con.execute("INSERT INTO sync_queue (tabla, data, sync) VALUES (?, ?, 0)", ("usuarios", data_sync))
+            
+            con.commit()
+            con.close()
+        
+        flash(" Clave actualizada y encriptada correctamente")
+        return redirect("/dashboard")
 
     return render_template("cambiar_clave.html")
 
 
 
 
+# ================== LOGOUT COMPLETO CORREGIDO PARA SQLITE.ROW ==================
 @app.route("/logout")
 def logout():
-    # 1. Obtener datos de la sesión actual
     cajero_id = session.get("cajero_id")
     caja_id = session.get("caja_id")
     
-    # Si no hay un cajero logueado, el usuario actual es el Administrador
     es_admin = cajero_id is None 
-    
-    con = get_db()  # Conexión de Render (PostgreSQL)
+    con = get_db()
     cur = con.cursor()
-
-    # ================= CONTROLES PARA EL ADMINISTRADOR =================
+    
+    # --- FLUJO CONTROL PARA EL ADMINISTRADOR ---
     if es_admin:
-        # Buscamos si hay alguna caja en estado ABIERTA en todo el sistema
-        # Usamos %s para el formateo nativo de Postgres
         ejecutar(cur, con, """
             SELECT id, "cajero", fecha_apertura, monto_inicial 
             FROM caja 
-            WHERE TRIM(UPPER(estado)) = %s 
+            WHERE TRIM(UPPER(estado)) = 'ABIERTA' 
             LIMIT 1
-        """, ('ABIERTA',))
+        """, ())
         
         caja_abierta = cur.fetchone()
         con.close()
-
-        # Si Postgres encuentra una fila, el Admin no puede salir
+        
         if caja_abierta:
-            # EXTRACCIÓN POSICIONAL PURA PARA RENDER (Tuplas de Postgres)
-            id_caja = caja_abierta[0]
-            usuario_caja = caja_abierta[1]
-            fecha_caja = caja_abierta[2]
-            monto_caja = caja_abierta[3]
-
+            # SOLUCIÓN: Convertimos el objeto sqlite3.Row a diccionario de Python
+            datos_caja = dict(caja_abierta)
+            
+            id_caja = datos_caja["id"]
+            usuario_caja = datos_caja["cajero"]
+            fecha_caja = datos_caja["fecha_apertura"]
+            monto_caja = datos_caja["monto_inicial"]
+            
             try:
                 monto_formateado = f"${float(monto_caja):,.2f}"
             except (ValueError, TypeError):
                 monto_formateado = f"${monto_caja}"
-
-            # Bloquea el logout del admin y lo devuelve a su panel principal
+                
             return f"""
             <script>
-                alert("⚠️ CONTROL DE CAJAS ABIERTAS (ADMIN):\\n\\nNo podés cerrar sesión porque hay una caja activa en el sistema.\\n\\n• N° de Caja: {id_caja}\\n• Cajero a cargo: {usuario_caja}\\n• Apertura: {fecha_caja}\\n• Monto Inicial: {monto_formateado}\\n\\nPor favor, solicita el cierre de la caja o gestiónala desde el historial.");
+                alert("⚠️ CONTROL DE CAJAS ABIERTAS:\\n\\nNo podés cerrar sesión porque hay una caja activa en el sistema.\\n\\n• N° de Caja: {id_caja}\\n• Cajero a cargo: {usuario_caja}\\n• Fecha/Hora Apertura: {fecha_caja}\\n• Monto Inicial: {monto_formateado}\\n\\nPor favor, solicitá el cierre del turno antes de salir.");
                 window.location.href = "/dashboard";
             </script>
             """
-
-    # ================= CONTROLES PARA EL CAJERO =================
+            
+    # --- FLUJO CONTROL PARA EL CAJERO ---
     elif caja_id:
         ejecutar(cur, con, "SELECT estado FROM caja WHERE id = %s", (caja_id,))
         caja = cur.fetchone()
         con.close()
-
+        
         if caja:
-            # Extracción posicional para la consulta del cajero en Postgres
-            estado = caja[0]
-            
+            # Acceso seguro mediante la interfaz del Row
+            estado = caja["estado"] if "estado" in caja.keys() else caja[0]
             if estado and estado.strip().upper() == 'ABIERTA':
                 return """
                 <script>
-                    alert("⚠️ Debes cerrar TU caja antes de salir");
+                    alert("❌ Debes cerrar TU caja antes de salir");
                     window.location.href = "/dashboard_cajero";
                 </script>
                 """
     else:
         con.close()
-
-    # Si el sistema no encuentra ninguna traba de seguridad, limpia la sesión
+        
     session.clear()
     return redirect("/")
+# ================== ACCIÓN: FORZAR CIERRE DE CAJA DESDE ADMIN ==================
+
+@app.route("/admin/forzar_cierre_caja/<id>", methods=["GET", "POST"])
+def forzar_cierre_caja(id):
+    if not session.get("admin"):
+        return "No tenés permisos para realizar esta acción", 403
+
+    fecha_actual = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    if request.method == "POST":
+        monto_cierre_real = float(request.form.get("monto_cierre_real") or 0)
+    else:
+        monto_cierre_real = 0.0
+    
+    id_limpio = str(id).strip()
+    
+    con = get_db_local()  # Tu función de conexión activa
+    cur = con.cursor()
+
+    try:
+        # 1. Obtener monto inicial usando tu función 'ejecutar' para compatibilidad cruzada
+        ejecutar(cur, con, "SELECT monto_inicial FROM caja WHERE id = %s", (id_limpio,))
+        caja_row = cur.fetchone()
+        
+        if not caja_row:
+            con.close()
+            return "La caja especificada no existe", 404
+            
+        if isinstance(caja_row, (list, tuple)):
+            monto_inicial = float(caja_row[0] if len(caja_row) > 0 else 0)
+        else:
+            monto_inicial = float(caja_row["monto_inicial"] or 0)
+
+        # 2. Calcular la sumatoria teórica de ventas usando 'ejecutar'
+        ejecutar(cur, con, "SELECT COALESCE(SUM(total_final), 0) FROM ventas WHERE caja_id = %s", (id_limpio,))
+        ventas_row = cur.fetchone()
+        
+        if isinstance(ventas_row, (list, tuple)):
+            total_ventas = float(ventas_row[0] if len(ventas_row) > 0 else 0)
+        else:
+            nombre_col = ventas_row.keys()[0] if hasattr(ventas_row, 'keys') else 0
+            total_ventas = float(ventas_row[nombre_col] or 0)
+
+        # 3. CÁLCULO DE ARQUEO DEFINITIVO
+        total_esperado = monto_inicial + total_ventas
+        diferencia_calculada = monto_cierre_real - total_esperado
+
+        # 4. MODIFICACIÓN CRÍTICA: Cambiamos cur.execute por tu función 'ejecutar'
+        # Esto traduce automáticamente los %s a ? en tu PC y mantiene %s en Render
+        ejecutar(cur, con, """
+            UPDATE caja 
+            SET estado = 'CERRADA', 
+                fecha_cierre = %s, 
+                cierre = %s, 
+                diferencia = %s 
+            WHERE id = %s
+        """, (fecha_actual, monto_cierre_real, diferencia_calculada, id_limpio))
+        
+        con.commit()
+        con.close()
+
+        # 5. Encolar los datos en el sistema offline original para Supabase
+        datos_sync = {
+            "id": id_limpio,
+            "estado": "CERRADA",
+            "fecha_cierre": fecha_actual,
+            "cierre": monto_cierre_real,
+            "diferencia": diferencia_calculada
+        }
+        save_offline("caja", "update", datos_sync)
+        
+        print(f"🔒 ¡ÉXITO COMPLETO! Caja {id_limpio} impactada como CERRADA.")
+        
+    except Exception as e:
+        if con:
+            con.rollback()
+            con.close()
+        print(f"❌ Error de transacción controlado: {e}")
+
+    # Redirige al historial liberando definitivamente el bloqueo de pantalla del Admin
+    return redirect("/admin/cierres_caja")
+
+
+
 
 
 @app.route("/caja/estado")
@@ -1066,30 +1154,16 @@ def estado_caja():
 
 @app.route("/verificar_caja")
 def verificar_caja():
+
     con = get_db()
     cur = con.cursor()
 
-    # Buscamos la caja que esté abierta en el sistema
-    cur.execute('SELECT id, "cajero" FROM caja WHERE estado = \'ABIERTA\' LIMIT 1')
+    cur.execute("SELECT id FROM caja WHERE estado='ABIERTA'")
     caja = cur.fetchone()
+
     con.close()
 
-    if caja:
-        # Extraemos el nombre del cajero de forma ultra-segura para Postgres y SQLite
-        if isinstance(caja, (list, tuple)):
-            nombre_cajero = caja[1]
-        elif hasattr(caja, 'keys'):
-            nombre_cajero = caja["cajero"]
-        else:
-            nombre_cajero = str(caja)
-
-        return {
-            "ABIERTA": True,
-            "cajero": str(nombre_cajero).strip()
-        }
-        
-    return {"ABIERTA": False}
-
+    return {"ABIERTA": bool(caja)}
 
 # ================== DASHBOARD ==================
 @app.route("/dashboard")
@@ -1202,15 +1276,17 @@ def clientes():
     con = get_db()
     cur = con.cursor()
 
-    # Lista de clientes
-    ejecutar(cur, con, "SELECT * FROM usuarios")
+    # 🎯 CORREGIDO: Traemos los datos en el orden exacto que espera Jinja, salteando la clave
+    # Filtramos para que solo traiga a los que son rol 'cliente' o el criterio que uses
+    ejecutar(cur, con, "SELECT id, nombre, telefono, direccion FROM usuarios ORDER BY nombre")
     data = cur.fetchall()
 
     cliente_editar = None
 
     # Si viene ?editar=ID
     if editar_id:
-        ejecutar(cur, con, "SELECT * FROM usuarios WHERE id=%s", (editar_id,))
+        # 🎯 CORREGIDO: Mismo orden para la edición
+        ejecutar(cur, con, "SELECT id, nombre, telefono, direccion FROM usuarios WHERE id=%s", (editar_id,))
         cliente_editar = cur.fetchone()
 
     con.close()
@@ -1220,6 +1296,7 @@ def clientes():
         clientes=data,
         cliente_editar=cliente_editar
     )
+
 @app.route("/clientes/actualizar/<int:id>", methods=["POST"])
 def actualizar_cliente(id):
     if not session.get("admin"):
@@ -1420,14 +1497,11 @@ def agregar_promo():
     return redirect("/promos")
 
 
-
-
 import uuid
 from datetime import datetime
 
 @app.route("/productos/agregar", methods=["GET", "POST"])
 def agregar_producto():
-    # 🔐 VALIDACIÓN DE PERMISOS CORREGIDA
     permisos = session.get("permisos", {})
     es_admin = session.get("admin")
     tiene_permiso = permisos.get("agregar") == 1
@@ -1437,20 +1511,19 @@ def agregar_producto():
 
     if request.method == "POST":
         try:
-            # Captura de datos del formulario
+            # 1. Captura con valores por defecto para evitar None
             codigo = (request.form.get("codigo") or "").strip().upper()
-            descripcion = request.form.get("descripcion")
+            descripcion = (request.form.get("descripcion") or "Sin descripción").strip()
             litros = int(request.form.get("litros") or 0)
             precio = float(request.form.get("precio") or 0)
+            costo = float(request.form.get("costo") or 0) # <--- AGREGADO
             stock = int(request.form.get("stock") or 0)
-            departamento = request.form.get("departamento")
+            departamento = request.form.get("departamento") or "General"
             
-            # --- 🔥 NUEVO: MANEJO DE FOTO ---
             foto = request.files.get('foto')
-            nombre_foto = "" # Valor por defecto si no suben nada
+            nombre_foto = ""
             
             if foto and foto.filename != '':
-                # Aseguramos un nombre de archivo seguro y único
                 extension = os.path.splitext(foto.filename)[1]
                 nombre_foto = f"{codigo}_{str(uuid.uuid4())[:8]}{extension}"
                 foto.save(os.path.join(UPLOAD_FOLDER, nombre_foto))
@@ -1458,41 +1531,37 @@ def agregar_producto():
             if not codigo:
                 return "❌ Código vacío"
 
-            # Generamos un ID único y la fecha actual
             producto_id = str(uuid.uuid4()) 
             fecha = datetime.now().strftime("%Y-%m-%d")
 
-            # ================= LOCAL (SQLite) =================
+            # 2. LOCAL (SQLite) - Incluimos 'costo'
             con = get_db_local()
             cur = con.cursor()
-            
-            # Agregamos la columna 'foto' al INSERT
             cur.execute("""
                 INSERT INTO productos (
-                    id, codigo, descripcion, litros, precio, stock, fecha, departamento, foto
+                    id, codigo, descripcion, litros, precio, costo, stock, fecha, departamento, foto
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (producto_id, codigo, descripcion, litros, precio, stock, fecha, departamento, nombre_foto))
-
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (producto_id, codigo, descripcion, litros, precio, costo, stock, fecha, departamento, nombre_foto))
             con.commit()
             con.close()
 
-            # ================= SYNC (Cola de sincronización) =================
+            # 3. SYNC - Diccionario completo (DEBE coincidir con las columnas de Supabase)
             data_producto = {
                 "id": producto_id,
                 "codigo": codigo,
                 "descripcion": descripcion,
                 "litros": litros,
                 "precio": precio,
+                "costo": costo, # <--- IMPORTANTE: Si falta aquí, llega NULL a la nube
                 "stock": stock,
                 "fecha": fecha,
                 "departamento": departamento,
-                "foto": nombre_foto # 🔥 Enviamos el nombre de la foto a la nube
+                "foto": nombre_foto 
             }
-            # Guardamos para que el worker lo suba a la nube después
             save_offline("productos", "insert", data_producto)
 
-            flash("✅ Producto guardado localmente con éxito")
+            flash(f"✅ Producto '{descripcion}' guardado con éxito")
             return redirect("/productos/agregar")
 
         except sqlite3.IntegrityError:
@@ -1500,7 +1569,6 @@ def agregar_producto():
         except Exception as e:
             return f"❌ Error: {e}"
 
-    # Si es GET, mostramos el formulario
     return render_template("agregar_producto.html")
 
 
@@ -1816,7 +1884,7 @@ def ver_cierres_caja():
         con = get_db()
         cur = con.cursor()
         
-        # Ejecutamos la consulta limpia
+        # Seleccionamos las columnas en un orden estricto y fijo
         ejecutar(cur, con, """
             SELECT id, "cajero", fecha_apertura, fecha_cierre, monto_inicial, cierre, diferencia, estado
             FROM caja
@@ -1824,45 +1892,39 @@ def ver_cierres_caja():
         """, ())
         rows = cur.fetchall()
         con.close()
-        
+
         cierres_procesados = []
         for r in rows:
-            # CONVERSIÓN SEGURA A DICCIONARIO (Une SQLite y Postgres para tu HTML)
-            if hasattr(r, 'keys'): # Si es el objeto Row de SQLite en la PC
+            # CORRECCIÓN DE MAPEO: Asignamos cada columna a su posición real indexada (0 al 7)
+            if hasattr(r, 'keys'):
                 d = dict(r)
-            else: # Si es la tupla nativa de PostgreSQL en Render
+            else:
                 d = {
-                    "id": str(r[0]).strip(),
-                    "cajero": r[1],
-                    "fecha_apertura": r[2],
-                    "fecha_cierre": r[3],
-                    "monto_inicial": r[4],
-                    "cierre": r[5],
-                    "diferencia": r[6],
+                    "id": r[0],              # <-- Posición 0: id real (UUID)
+                    "cajero": r[1],          # <-- Posición 1: CAJERO1
+                    "fecha_apertura": r[2],  # <-- Posición 2: 2026-05-14...
+                    "fecha_cierre": r[3],    # ... resto de las posiciones en orden
+                    "monto_inicial": r[4], 
+                    "cierre": r[5], 
+                    "diferencia": r[6], 
                     "estado": r[7]
                 }
             
-            # Limpieza financiera con 'None' corregido en mayúscula
+            # Limpiamos los valores financieros de forma segura para Jinja
             d['monto_inicial'] = float(d.get('monto_inicial') or 0)
-            if d.get('cierre') is not None: 
+            
+            if d.get('cierre') is not None:
                 d['cierre'] = float(d['cierre'])
-            if d.get('diferencia') is not None: 
+                
+            if d.get('diferencia') is not None:
                 d['diferencia'] = float(d['diferencia'])
-            
-            # Aseguramos limpiar espacios del estado en el propio servidor
-            if d.get('estado'): 
-                d['estado'] = str(d['estado']).strip().upper()
-            
+                
             cierres_procesados.append(d)
-            
-        # Enviamos 'cajas' para alimentar tu bucle {% for c in cajas %}
-        return render_template("admin_cierres.html", cajas=cierres_procesados)
         
+        return render_template("admin_cierres.html", cajas=cierres_procesados)
     except Exception as e:
-        print(f"ERROR EN HISTORIAL: {e}")
-        return f"Error al cargar el historial: {e}"
-
-
+        print(f"🔥 ERROR EN HISTORIAL: {e}")
+        return f"Error: {e}"
 
 
 @app.route("/litros")
@@ -1947,36 +2009,54 @@ def caja_estado():
         "total_esperado": monto_inicial + ventas
     }
 
+import json
+from flask import jsonify, session, request, redirect
+
+
+
+from flask import jsonify, session, request, redirect
+
 @app.route("/carrito/agregar", methods=["POST"])
 def carrito_agregar():
-    # 1. Inicialización e inmunidad de persistencia en la cookie de Flask
+    # Inicialización mandatoria y segura del carrito en la sesión
     if "carrito" not in session or session["carrito"] is None:
         session["carrito"] = []
 
+    # Limpiamos el código y cantidad
     codigo_original = (request.form.get("codigo") or "").strip()
     codigo_upper = codigo_original.upper()
     cantidad_raw = request.form.get("cantidad")
+    
+    # Capturamos si se marcó la opción de Canje en el POS
+    es_canje = request.form.get("es_canje") in ["on", "true"]
+
+    # [INTEGRACIÓN DE OFERTAS]: Capturamos el porcentaje de descuento del formulario
+    descuento_raw = request.form.get("descuento") or "0"
+    try:
+        descuento_porcentaje = float(descuento_raw)
+    except ValueError:
+        descuento_porcentaje = 0.0
 
     if not codigo_original:
-        return "❌ Código vacío"
+        return "❌ Código vacío", 400
 
     if not cantidad_raw:
-        return "❌ Debes ingresar cantidad"
+        return "❌ Debes ingresar cantidad", 400
 
     try:
         cantidad = int(cantidad_raw)
     except ValueError:
-        return "❌ Cantidad debe ser un número"
+        return "❌ Cantidad debe ser un número", 400
 
     con = get_db()
     cur = con.cursor()
 
-    # Copia local segura para forzar el guardado correcto de la sesión
+    # Extraemos el carrito a una lista local para obligar a Flask a guardar cambios en la cookie
     carrito_temporal = list(session["carrito"])
 
     # ================= LÓGICA DE PROMOS =================
     if codigo_upper.startswith("PROMO-"):
-        promo_id = codigo_original[6:]
+        promo_id = codigo_original[6:] 
         
         ejecutar(cur, con, """
             SELECT id, nombre, descripcion, precio
@@ -1988,20 +2068,33 @@ def carrito_agregar():
         
         if not promo:
             con.close()
-            return f"❌ Promo no existe (ID buscado: {promo_id})"
+            return f"❌ Promo no existe (ID buscado: {promo_id})", 404
 
         prod_id, nombre, desc, precio = promo
+        
+        if es_canje:
+            precio_final = 0.0
+        elif descuento_porcentaje > 0:
+            precio_final = float(precio or 0) * (1 - (descuento_porcentaje / 100))
+        else:
+            precio_final = float(precio or 0)
+
+        prefijo_visual = "🔄 [CANJE] " if es_canje else ("🔥 [OFERTA] " if descuento_porcentaje > 0 else "🎁 ")
 
         carrito_temporal.append({
             "id": "promo_" + str(prod_id),
-            "desc": "🎁 " + nombre,
-            "precio": float(precio or 0),
-            "cantidad": cantidad
+            "desc": prefijo_visual + nombre,
+            "precio": precio_final,
+            "cantidad": cantidad,
+            "es_canje": es_canje
         })
 
         session["carrito"] = carrito_temporal
         session.modified = True
         con.close()
+        
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.is_json:
+            return jsonify({"success": True, "mensaje": "Promo agregada"}), 200
         return redirect("/ventas_ui")
 
     # ================= LÓGICA DE PRODUCTOS =================
@@ -2015,44 +2108,57 @@ def carrito_agregar():
     
     if not prod:
         con.close()
-        return f"❌ Producto no existe: {codigo_upper}"
+        return f"❌ Producto no existe: {codigo_upper}", 404
 
     prod_id, desc, precio, stock = prod
 
-    # ================= NUEVO: CONTROL ACUMULATIVO DE STOCK =================
-    # 1. Contamos cuántas unidades de este producto específico ya están en el carrito
-    unidades_en_carrito = 0
+    # ================= CONTROLES DE ACUMULACIÓN DE STOCK EN CARRITO =================
+    # 1. Contamos cuántas unidades de ESTE mismo producto ya se agregaron previamente al carrito
+    cantidad_ya_en_carrito = 0
     for item in carrito_temporal:
         if item.get("id") == prod_id:
-            unidades_en_carrito += int(item.get("cantidad") or 0)
+            cantidad_ya_en_carrito += int(item.get("cantidad") or 0)
 
-    # 2. Calculamos el stock remanente real en góndola
-    stock_disponible_real = stock - unidades_en_carrito
+    # 2. Calculamos el stock neto real que queda disponible en la estantería física
+    stock_disponible_real = stock - cantidad_ya_en_carrito
 
-    # 3. Validación de stock absoluto a cero
+    # 3. Bloqueo si el stock en góndola ya fue totalmente absorbido por el carrito actual
     if stock_disponible_real <= 0:
         con.close()
-        return f"❌ No hay más stock disponible. Las {stock} unidades ya están en el carrito."
+        return f"❌ No podés agregar más. El stock total de {stock} unidades ya está cargado en el carrito.", 400
 
-    # 4. Validación si el nuevo ingreso supera el disponible calculado
+    # 4. Bloqueo si la nueva cantidad digitada supera al remanente calculado
     if stock_disponible_real < cantidad:
         con.close()
-        return f"❌ Stock insuficiente. Solo quedan {stock_disponible_real} disponibles (Ya tenés {unidades_en_carrito} en el carrito)."
-    # ========================================================================
+        return f"❌ Cantidad excedida. Solo quedan {stock_disponible_real} unidades disponibles (Ya tenés {cantidad_ya_en_carrito} en el carrito).", 400
+    # ================================================================================
 
-    # Insertamos el elemento en nuestra lista temporal
+    if es_canje:
+        precio_final = 0.0
+    elif descuento_porcentaje > 0:
+        precio_final = float(precio or 0) * (1 - (descuento_porcentaje / 100))
+        print(f"💰 ¡OFERTA VALIDADA EN BACKEND!: {desc} ingresa con un -{descuento_porcentaje}%. Precio final fijado: {precio_final}")
+    else:
+        precio_final = float(precio or 0)
+
+    prefijo_visual = "🔄 [CANJE] " if es_canje else ("🔥 [OFERTA] " if descuento_porcentaje > 0 else "")
+
     carrito_temporal.append({
         "id": prod_id,
-        "desc": desc,
-        "precio": float(precio or 0),
-        "cantidad": cantidad
+        "desc": prefijo_visual + desc,
+        "precio": precio_final,
+        "cantidad": cantidad,
+        "es_canje": es_canje
     })
 
-    # Forzamos la sobreescritura limpia en la sesión de producción
     session["carrito"] = carrito_temporal
     session.modified = True
     con.close()
+    
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.is_json:
+        return jsonify({"success": True, "mensaje": "Producto agregado con descuento"}), 200
     return redirect("/ventas_ui")
+
 
 @app.route("/reporte_ventas")
 def reporte_ventas():
@@ -2268,51 +2374,71 @@ def debug_promos():
     return str(data)
 @app.route("/ventas_ui")
 def ventas_ui():
-    cajero_nombre = session.get("nombre_cajero", "admin")
-    
-    # Conexión local para productos y promos
     con = get_db()
     cur = con.cursor()
-
-    # ================= PRODUCTOS =================
-    ejecutar(cur, con, "SELECT * FROM productos")
+    
+    # 1. Traer productos y promos (esto ya lo tenés)
+    cur.execute("SELECT * FROM productos")
     productos = cur.fetchall()
-
-    # ================= PROMOS =================
-    ejecutar(cur, con, """
-        SELECT id, nombre, descripcion, precio 
-        FROM promos 
-        WHERE activa=1
-    """)
+    cur.execute("SELECT id, nombre, descripcion, precio FROM promos WHERE activa=1")
     promos = cur.fetchall()
+
+    # 2. 🔥 EL FIX: Traer los clientes para el desplegable
+    # Asegurate de que la consulta no los filtre por error
+    cur.execute("SELECT id, nombre, puntos_acumulados FROM usuarios")
+    lista_clientes = cur.fetchall()
+    
     con.close()
-
-    # ================= CLIENTES (SUPABASE) =================
-    # Traemos los clientes de la nube para tener los puntos reales
-    clientes = []
-    try:
-        cloud_con = get_db_cloud() # Tu función de conexión a Supabase
-        cloud_cur = cloud_con.cursor()
-        # Traemos ID, Nombre y Puntos
-        cloud_cur.execute("SELECT id, nombre, puntos_acumulados FROM usuarios ORDER BY nombre ASC")
-        clientes = cloud_cur.fetchall()
-        cloud_con.close()
-    except Exception as e:
-        print(f"⚠️ Error cargando clientes de nube: {e}")
-        # Opcional: cargar clientes locales si falla la nube
-
-    # ================= CARRITO =================
-    carrito = session.get("carrito", [])
-    subtotal = sum(float(i["precio"]) * int(i["cantidad"]) for i in carrito)
-
+    
+    # 3. PASARLOS AL HTML (Asegurate que el nombre coincida con el for del HTML)
     return render_template(
-        "ventas.html",
-        productos=productos,
-        promos=promos,
-        clientes=clientes, # <--- IMPORTANTE: Enviamos la lista de clientes
-        carrito=carrito,
-        total=subtotal
+        "ventas.html", 
+        productos=productos, 
+        promos=promos, 
+        clientes=lista_clientes, # <--- Este nombre debe usar el HTML
+        carrito=session.get("carrito", []),
+        total=sum(float(i["precio"]) * int(i["cantidad"]) for i in session.get("carrito", []))
     )
+@app.route("/carrito/eliminar/<int:index>")
+def carrito_eliminar(index):
+    carrito = session.get("carrito", [])
+    
+    # Verificamos que el índice exista para que no explote
+    if 0 <= index < len(carrito):
+        item_eliminado = carrito.pop(index)
+        session["carrito"] = carrito
+        session.modified = True
+        print(f"🗑️ Ítem eliminado del carrito: {item_eliminado['desc']}")
+        
+    return redirect("/ventas_ui")
+from flask import jsonify, session
+
+@app.route('/api/carrito_actual', methods=['GET'])
+def api_carrito_actual():
+    try:
+        # Extraemos de forma segura la lista de productos actual de la sesión
+        items_carrito = session.get("carrito", [])
+        if items_carrito is None:
+            items_carrito = []
+        
+        # Calculamos de manera matemática exacta el total acumulado de la compra
+        total_acumulado = 0.0
+        for item in items_carrito:
+            # Multiplicamos precio por cantidad para cada fila del ticket
+            total_acumulado += float(item.get("precio", 0)) * int(item.get("cantidad", 1))
+            
+        # Devolvemos la respuesta estructurada limpia en formato JSON
+        return jsonify({
+            "items": items_carrito,
+            "total": total_acumulado
+        }), 200
+        
+    except Exception as e:
+        print(f"❌ Error en API de consulta de ticket: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+
 
 @app.route("/carrito/confirmar", methods=["POST"])
 def carrito_confirmar():
@@ -2324,17 +2450,19 @@ def carrito_confirmar():
     if not caja_id:
         return "❌ Debes abrir caja primero"
 
+    # Conexión local optimizada
     con = get_db_local() 
     cur = con.cursor()
 
     try:
-        # --- CAPTURA DE DATOS (NUEVOS + ANTERIORES) ---
-        cliente_id = request.form.get("cliente_id")
-        puntos_canjeados = float(request.form.get("puntos_canje_dinero") or 0)
-        
+        # --- 1. CAPTURA DE DATOS DEL FORMULARIO ---
         metodo_pago = request.form.get("metodo_pago")
         recargo_porc = float(request.form.get("recargo") or 0)
         descuento_porc = float(request.form.get("descuento") or 0)
+        cliente_id = request.form.get("cliente_id")
+        
+        puntos_canje_cash = int(request.form.get("puntos_canje_dinero") or 0)
+        descuento_por_puntos_pesos = puntos_canje_cash * 1.0 
 
         if not metodo_pago:
             return "❌ Selecciona método de pago"
@@ -2343,107 +2471,126 @@ def carrito_confirmar():
         venta_id = str(uuid.uuid4())
         fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        # --- CÁLCULOS INCLUYENDO PUNTOS ---
+        # --- 2. CÁLCULO DE TOTALES ---
         subtotal = sum(float(i["precio"]) * int(i["cantidad"]) for i in carrito)
-        recargo_valor = subtotal * (recargo_porc / 100)
-        descuento_valor = subtotal * (descuento_porc / 100)
+        subtotal_restante = max(0, subtotal - descuento_por_puntos_pesos)
         
-        # El total final descuenta el canje de puntos
-        total_final = subtotal + recargo_valor - descuento_valor - puntos_canjeados
-        total_final = max(0, total_final)
+        recargo_valor = subtotal_restante * (recargo_porc / 100)
+        descuento_valor = subtotal_restante * (descuento_porc / 100)
+        total_final = subtotal_restante + recargo_valor - descuento_valor
 
-        # 1. INSERT VENTA LOCAL
+        # --- 3. INSERT VENTA LOCAL ---
+        descuento_total_final = descuento_valor + descuento_por_puntos_pesos
+        
         cur.execute("""
             INSERT INTO ventas (id, fecha, total, recargo, descuento, total_final, metodo_pago, cajero, caja_id)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (venta_id, fecha, subtotal, recargo_valor, (descuento_valor + puntos_canjeados), total_final, metodo_pago, cajero_nombre, caja_id))
+        """, (venta_id, fecha, subtotal, recargo_valor, descuento_total_final, total_final, metodo_pago, cajero_nombre, caja_id))
 
-        # 2. INSERT ITEMS LOCALES (Respetando lógica de litros y promos)
+        # --- 4. PROCESAMIENTO DE ITEMS ---
         items_para_sync = []
+        puntos_a_restar_por_items = 0
+        litros_totales_venta = 0
+
         for item in carrito:
             item_id = str(uuid.uuid4())
             cant_vendida = int(item["cantidad"])
             sub_item = float(item["precio"]) * cant_vendida
-            
+            prod_id_real = item["id"]
+            es_promo = "promo_" in str(prod_id_real)
+
+            if item.get("es_canje"):
+                puntos_a_restar_por_items += (50 * cant_vendida)
+
             litros_totales_item = 0
-            
-            if "promo_" not in str(item["id"]):
-                cur.execute("SELECT litros FROM productos WHERE id = ?", (item["id"],))
+            if not es_promo:
+                cur.execute("UPDATE productos SET stock = stock - ? WHERE id = ?", (cant_vendida, prod_id_real))
+                cur.execute("SELECT litros FROM productos WHERE id = ?", (prod_id_real,))
                 res_prod = cur.fetchone()
-                
                 if res_prod:
                     try:
-                        # Si es un objeto tipo dict por Row o similar
-                        litros_unidad = float(res_prod["litros"] or 0)
+                        l_unidad = res_prod["litros"] if hasattr(res_prod, 'keys') else res_prod[0]
+                        litros_unidad = float(l_unidad or 0)
+                        litros_totales_item = litros_unidad * cant_vendida
+                        litros_totales_venta += litros_totales_item
                     except:
-                        # Si es una tupla simple
-                        litros_unidad = float(res_prod[0] or 0)
-                    
-                    litros_totales_item = litros_unidad * cant_vendida
+                        litros_totales_item = 0
 
             cur.execute("""
                 INSERT INTO venta_items (id, venta_id, producto_id, cantidad, litros_total, subtotal)
                 VALUES (?, ?, ?, ?, ?, ?)
-            """, (item_id, venta_id, item["id"], cant_vendida, litros_totales_item, sub_item))
+            """, (item_id, venta_id, prod_id_real, cant_vendida, litros_totales_item, sub_item))
             
             items_para_sync.append({
-                "id": item_id, 
-                "venta_id": venta_id, 
-                "producto_id": item["id"],
-                "cantidad": cant_vendida, 
-                "litros_total": litros_totales_item,
-                "subtotal": sub_item
+                "id": item_id, "venta_id": venta_id, "producto_id": prod_id_real,
+                "cantidad": cant_vendida, "litros_total": litros_totales_item, "subtotal": sub_item,
+                "es_promo": es_promo 
             })
+
+        # --- 5. GESTIÓN DE PUNTOS ---
+        balance_neto = 0
+        if cliente_id and cliente_id != "":
+            puntos_ganados = 100 
+            total_puntos_a_deducir = puntos_canje_cash + puntos_a_restar_por_items
+            balance_neto = puntos_ganados - total_puntos_a_deducir
+            
+            cur.execute("UPDATE usuarios SET puntos_acumulados = COALESCE(puntos_acumulados, 0) + ? WHERE id = ?", (balance_neto, cliente_id))
 
         con.commit()
+        con.close() # 🔥 Cerramos la base local rápido
 
-        # ================= SYNC Y PUNTOS EN NUBE =================
-        
-        # A. Sincronización de Venta (Respetando tu save_offline)
-        save_offline("ventas", "insert", {
+        # --- 6. SINCRONIZACIÓN (SUBIDA INMEDIATA + LOTE) ---
+        if cliente_id and cliente_id != "":
+            # Intentamos impactar puntos en la nube ya mismo
+            subir_puntos_inmediato(cliente_id, balance_neto)
+
+        # Preparamos el lote para el Worker (Backup por si falló la subida inmediata y resto de la venta)
+        lote_final = []
+        lote_final.append(("ventas", "insert", {
             "id": venta_id, "fecha": fecha, "total": subtotal,
-            "recargo": recargo_valor, "descuento": (descuento_valor + puntos_canjeados),
+            "recargo": recargo_valor, "descuento": descuento_total_final,
             "total_final": total_final, "metodo_pago": metodo_pago, 
-            "cajero": cajero_nombre, "caja_id": caja_id
-        })
+            "cajero": cajero_nombre, "caja_id": caja_id, "cliente_id": cliente_id
+        }))
 
-        # B. 🔥 LÓGICA DE PUNTOS SUPABASE (Try independiente para no romper la venta)
-        if cliente_id and cliente_id.strip() != "":
-            try:
-                cloud_con = get_db_cloud()
-                cloud_cur = cloud_con.cursor()
-                
-                # Calculamos el 1% de la compra para sumar
-                puntos_nuevos = total_final * 0.01 
-                
-                # Restamos lo canjeado y sumamos lo ganado hoy
-                cloud_cur.execute("""
-                    UPDATE usuarios 
-                    SET puntos_acumulados = COALESCE(puntos_acumulados, 0) - %s + %s
-                    WHERE id = %s
-                """, (puntos_canjeados, puntos_nuevos, cliente_id))
-                
-                cloud_con.commit()
-                cloud_con.close()
-            except Exception as e_puntos:
-                print(f"⚠️ Error al actualizar puntos en Supabase: {e_puntos}")
+        if cliente_id:
+            lote_final.append(("usuarios", "update", {"id": cliente_id, "puntos_balance": balance_neto}))
 
-        # C. Sincronización de Items y Stock
-        for item_s in items_para_sync:
-            save_offline("venta_items", "insert", item_s)
-            save_offline("productos", "update", {
-                "id": item_s["producto_id"],
-                "stock_restar": item_s["cantidad"] 
-            })
+        for it in items_para_sync:
+            es_p = it.pop("es_promo", False) 
+            lote_final.append(("venta_items", "insert", it))
+            if not es_p:
+                lote_final.append(("productos", "update", {"id": it["producto_id"], "stock_restar": it["cantidad"]}))
+
+        # 🔥 GUARDADO EN LOTE (Sync Queue)
+        save_offline_batch(lote_final)
 
         session["carrito"] = []
+        session.modified = True
         return redirect("/ventas_ui")
 
     except Exception as e:
-        if con: con.rollback()
+        if con: con.rollback(); con.close()
+        print(f"❌ Error en confirmar venta: {e}")
         return f"❌ Error en venta: {e}"
-    finally:
-        if con: con.close()
+
+
+@app.route("/api/cliente/validar_puntos/<int:cliente_id>")
+def validar_puntos(cliente_id):
+    con = get_db()
+    cur = con.cursor()
+    # Traemos puntos y litros (si tenés la columna litros_acumulados)
+    ejecutar(cur, con, "SELECT puntos_acumulados FROM usuarios WHERE id=%s", (cliente_id,))
+    cliente = cur.fetchone()
+    
+    # Supongamos que 1 punto = $1 de descuento
+    puntos = cliente[0] if cliente else 0
+    return jsonify({
+        "puntos": puntos,
+        "descuento_disponible": puntos * 1.0  # Aquí aplicás tu regla de conversión
+    })
+
+
 
 @app.route("/caja/cerrar", methods=["POST"])
 def cierre_caja():
@@ -2630,68 +2777,125 @@ def retiro_caja():
     con.close()
 
     return "OK"
-# ================== LOGIN CAJERO PRO PARA RENDER (CON INTERFASES CONTROLADAS) ==================
 @app.route("/login_cajero", methods=["GET", "POST"])
 def login_cajero():
     if request.method == "POST":
-        nombre = request.form.get("nombre")
-        password = request.form.get("password")
+        # Soportamos el ingreso tanto desde el formulario HTML tradicional como desde el JSON/Fetch de confirmación
+        if request.is_json:
+            datos_json = request.get_json()
+            nombre = datos_json.get("nombre")
+            password = datos_json.get("password")
+            confirmado = datos_json.get("confirmado") == True
+        else:
+            nombre = request.form.get("nombre")
+            password = request.form.get("password")
+            confirmado = request.form.get("confirmado_reingreso") == "true"
         
-        con = get_db()
+        con = get_db()  # Conector híbrido para SQLite (PC) o Postgres (Render)
         cur = con.cursor()
         
-        # 1. Validamos las credenciales del cajero
+        # 1. Validar las credenciales básicas del cajero
         ejecutar(cur, con, "SELECT * FROM cajeros WHERE usuario = %s AND password = %s", (nombre, password))
         cajero = cur.fetchone()
 
         if cajero:
-            # Extraemos el nombre exacto con tus índices posicionales
-            nombre_exacto_db = cajero[1]
-            cajero_id_fijo = cajero[0]
+            # 2. Si el cajero no viene con el flag de confirmación, verificamos si tiene caja abierta
+            if not confirmado:
+                ejecutar(cur, con, """
+                    SELECT id, fecha_apertura 
+                    FROM caja 
+                    WHERE TRIM(UPPER(cajero)) = TRIM(UPPER(%s)) AND TRIM(UPPER(estado)) = 'ABIERTA'
+                    LIMIT 1
+                """, (nombre,))
+                caja_abierta = cur.fetchone()
 
-            # 2. Buscamos si ya tiene una caja abierta en Render (PostgreSQL)
-            ejecutar(cur, con, """
-                SELECT id FROM caja 
-                WHERE TRIM(UPPER(cajero)) = TRIM(UPPER(%s)) AND TRIM(UPPER(estado)) = 'ABIERTA' 
-                LIMIT 1
-            """, (nombre_exacto_db,))
-            
+                if caja_abierta:
+                    # Extraer ID y Fecha según el entorno (Tupla en Render, Row en PC)
+                    if isinstance(caja_abierta, (list, tuple)):
+                        id_caja = caja_abierta[0]
+                        fecha_ap = caja_abierta[2]
+                    else:
+                        id_caja = caja_abierta["id"]
+                        fecha_ap = caja_abierta["fecha_apertura"]
+
+                    con.close()
+                    
+                    # 3. INTERFAZ DE DECISIÓN COMPACTA Y SEGURA CONTRA ERRORES
+                    # Pasamos las credenciales de forma limpia usando Javascript Fetch hacia la misma ruta
+                    return f"""
+                    <script>
+                        let respuesta = confirm("⚠️ AVISO DE SESIÓN ACTIVA:\\n\\nYa tenés una caja ABIERTA en el sistema bajo el usuario '{nombre}'.\\n• Apertura: {fecha_ap}\\n\\n¿Deseás entrar y continuar trabajando en esa misma caja?\\n\\n[Aceptar] = Entrar directo a realizar ventas.\\n[Cancelar] = Volver para ingresar con otro usuario.");
+                        
+                        if (respuesta) {{
+                            // Enviamos una petición de fondo al servidor avisando que el reingreso fue aceptado
+                            fetch('/login_cajero', {{
+                                method: 'POST',
+                                headers: {{ 'Content-Type': 'application/json' }},
+                                body: JSON.stringify({{
+                                    nombre: {repr(nombre)},
+                                    password: {repr(password)},
+                                    confirmado: true
+                                }})
+                            }})
+                            .then(res => {{
+                                // Una vez procesado en el servidor, nos movemos directo a la interfaz de ventas
+                                window.location.href = "/ventas_ui";
+                            }})
+                            .catch(err => alert("Error al procesar reingreso: " + err));
+                        }} else {{
+                            window.location.href = "/login_cajero";
+                        }}
+                    </script>
+                    """
+
+            # 4. REUTILIZACIÓN DE CAJA ACTIVADA
+            ejecutar(cur, con, "SELECT id FROM caja WHERE TRIM(UPPER(cajero)) = TRIM(UPPER(%s)) AND TRIM(UPPER(estado)) = 'ABIERTA' LIMIT 1", (nombre,))
             caja_existente = cur.fetchone()
+            caja_id_detectado = None
+            
+            if caja_existente:
+                caja_id_detectado = caja_existente[0] if isinstance(caja_existente, (list, tuple)) else caja_existente["id"]
+
+            session.clear()
+            
+            # Asignación de variables mapeadas por posición o clave según tu base de datos
+            if isinstance(cajero, (list, tuple)):
+                session["cajero_id"] = cajero[0]
+                session["nombre_cajero"] = cajero[1]
+                session["caja_id"] = caja_id_detectado  # Inyectamos el ID de la caja preexistente
+                session["permisos"] = {
+                    "vender": cajero[9] if len(cajero) > 9 else 1, 
+                    "pedidos": cajero[6] if len(cajero) > 6 else 1, 
+                    "reportes": cajero[4] if len(cajero) > 4 else 1, 
+                    "stock": cajero[8] if len(cajero) > 8 else 1, 
+                    "agregar": cajero[7] if len(cajero) > 7 else 1
+                }
+            else:
+                session["cajero_id"] = cajero["id"]
+                session["nombre_cajero"] = cajero["usuario"]
+                session["caja_id"] = caja_id_detectado  # Inyectamos el ID de la caja preexistente
+                session["permisos"] = {
+                    "vender": cajero["puede_vender"], 
+                    "pedidos": cajero["puede_ver_pedidos"], 
+                    "reportes": cajero["puede_ver_reportes"], 
+                    "stock": cajero["puede_ver_stock"], 
+                    "agregar": cajero["puede_agregar_productos"]
+                }
+            
+            session.permanent = True
             con.close()
             
-            # ELIMINACIÓN DE TUPLA: Extraemos estrictamente el texto plano del ID
-            caja_id_detectado = None
-            if caja_existente:
-                if isinstance(caja_existente, (list, tuple)):
-                    caja_id_detectado = str(caja_existente[0]) # <--- Tomamos solo el ID de la tupla
-                else:
-                    caja_id_detectado = str(caja_existente["id"])
-
-            # 3. Guardamos la sesión limpia sin caracteres extraños
-            session.clear()
-            session["cajero_id"] = cajero_id_fijo
-            session["nombre_cajero"] = nombre_exacto_db
-            session["caja_id"] = caja_id_detectado # Ahora se guarda como string limpio: 'e549b2bd...'
-
-            session["permisos"] = {
-                "vender": cajero[4],
-                "pedidos": cajero[5],
-                "reportes": cajero[6],
-                "stock": cajero[7],
-                "agregar": cajero[8]
-            }
-            session.permanent = True
-            
-            if caja_id_detectado:
-                return redirect("/ventas_ui")
+            # Si vino mediante Fetch (el botón Aceptar del confirm), respondemos un OK para que JS redirija
+            if request.is_json:
+                return jsonify({"success": True}), 200
                 
-            return redirect("/dashboard_cajero")
+            # Si fue un inicio de sesión convencional limpio de primera instancia
+            return redirect("/ventas_ui")
         else:
             con.close()
-            return render_template("login_cajero.html", error="❌ Usuario o contraseña incorrectos")
+            return "❌ Usuario o contraseña incorrectos"
             
     return render_template("login_cajero.html")
-
 
 
 
@@ -2832,7 +3036,7 @@ def crear_cajero():
         if not usuario or not password:
             return "❌ Datos incompletos"
         
-        con = get_db_local() # Aseguramos primero el guardado local
+        con = get_db_local()
         cur = con.cursor()
         
         try:
@@ -2841,27 +3045,40 @@ def crear_cajero():
                 INSERT INTO cajeros (usuario, password, rol)
                 VALUES (?, ?, 'cajero')
             """, (usuario, password))
+            
+            # 2. 🔥 RECUPERAR EL ID GENERADO
+            # Esto obtiene el ID que SQLite acaba de crear automáticamente
+            nuevo_id = cur.lastrowid
             con.commit()
             
-            # 2. 🔥 MANDAR A LA COLA DE SYNC
-            # Pasamos los datos que Supabase necesita
+            # 3. MANDAR A LA COLA DE SYNC CON EL ID REAL
+            # Ahora data_cajero ya no tiene el ID en null
             data_cajero = {
+                "id": nuevo_id,
                 "usuario": usuario,
                 "password": password,
-                "rol": "cajero"
+                "rol": "cajero",
+                "puede_vender": 1,
+                "puede_ver_pedidos": 0,
+                "puede_ver_reportes": 0,
+                "puede_ver_stock": 0,
+                "puede_agregar_productos": 0,
+                "agregar_productos": 0
             }
             save_offline("cajeros", "insert", data_cajero)
             
-            flash("✅ Cajero creado y programado para sincronizar")
+            flash(f"✅ Cajero {usuario} (ID: {nuevo_id}) creado y sincronizando")
             return redirect("/dashboard")
             
         except Exception as e:
             con.rollback()
+            print(f"❌ Error creando cajero: {e}")
             return f"❌ Error: {e}"
         finally:
             con.close()
             
     return render_template("crear_cajero.html")
+
 
 @app.route("/cajeros")
 def cajeros():
@@ -3077,10 +3294,8 @@ def editar_promo(id):
 @app.route("/stock", methods=["GET", "POST"])
 def stock():
     # 🔐 VALIDACIÓN CORREGIDA
-    # Obtenemos el diccionario de permisos de la sesión
     permisos = session.get("permisos", {})
     es_admin = session.get("admin")
-    # Verificamos si el permiso de stock es 1
     tiene_permiso_stock = permisos.get("stock") == 1
 
     if not es_admin and not tiene_permiso_stock:
@@ -3095,19 +3310,22 @@ def stock():
         descripcion = request.form.get("descripcion")
         precio = float(request.form.get("precio") or 0)
         stock_val = int(request.form.get("stock") or 0)
+        departamento = request.form.get("departamento") # 📂 Capturamos el cambio si se edita
 
         if not producto_id:
             con.close()
             return "❌ ID inválido"
 
         try:
+            # Agregamos departamento al UPDATE local
             ejecutar(cur, con, """
                 UPDATE productos
                 SET descripcion=%s,
                     precio=%s,
-                    stock=%s
+                    stock=%s,
+                    departamento=%s
                 WHERE id=%s
-            """, (descripcion, precio, stock_val, producto_id))
+            """, (descripcion, precio, stock_val, departamento, producto_id))
 
             con.commit()
 
@@ -3117,13 +3335,15 @@ def stock():
                     con_cloud = get_db_cloud()
                     cur_cloud = con_cloud.cursor()
 
+                    # Agregamos departamento al UPDATE de la nube
                     cur_cloud.execute("""
                         UPDATE productos
                         SET descripcion=%s,
                             precio=%s,
-                            stock=%s
+                            stock=%s,
+                            departamento=%s
                         WHERE id=%s
-                    """, (descripcion, precio, stock_val, producto_id))
+                    """, (descripcion, precio, stock_val, departamento, producto_id))
 
                     con_cloud.commit()
                     con_cloud.close()
@@ -3135,8 +3355,9 @@ def stock():
             return f"❌ Error al actualizar: {e}"
 
     # ================= LISTAR PRODUCTOS =================
+    # 💥 MODIFICACIÓN CRÍTICA: Se añade departamento en la posición índice 5
     ejecutar(cur, con, """
-        SELECT id, codigo, descripcion, precio, stock
+        SELECT id, codigo, descripcion, precio, stock, departamento
         FROM productos
         ORDER BY descripcion
     """)
@@ -3146,9 +3367,6 @@ def stock():
 
     return render_template("stock.html", productos=productos)
 
-# ================== RUN ==================
-import threading
-threading.Thread(target=sync_worker, daemon=True).start()
 
 # =================================================IMIENTOS FINALES=================================================
 
@@ -3185,18 +3403,30 @@ def inicializar_nube():
         except Exception as e:
             print(f"⚠️ Error inicializando nube: {e}")
 
-# 2. Arranque del sistema
-if __name__ == "__main__":
-    # Solo inicializamos la nube si estamos en Render
-    inicializar_nube()
 
-    # Iniciamos el Worker de sincronización (SOLO UNA VEZ)
-    # Esto corre tanto en PC como en Render (aunque en Render no hará nada si no hay SQLite)
+import webbrowser # <-- Agregá este import arriba de todo
+
+# ... (tu código actual) ...
+
+
+if __name__ == "__main__":
+    # 🌐 Solo intentamos inicializar la nube si hay internet
+    if internet_ok():
+        threading.Thread(target=inicializar_nube, daemon=True).start()
+    else:
+        print("🌐 Modo Offline: Saltando inicialización de nube...")
+
+    # Iniciamos el Worker de sincronización
     threading.Thread(target=sync_worker, daemon=True).start()
 
-    # Configuración de puerto para Render o Local
+    # Configuración de puerto
     puerto = int(os.environ.get("PORT", 5000))
     
-    # Arrancamos la app
+    # 🔥 ESTO ES LO QUE FALTA: Abre el navegador automáticamente
+    # Solo lo hacemos si NO estamos en Render (para que no falle en la nube)
     es_produccion = os.environ.get("RENDER")
-    app.run(host="0.0.0.0", port=puerto, debug=not es_produccion)
+    if not es_produccion:
+        webbrowser.open(f"http://127.0.0.1:{puerto}")
+
+    # Arrancamos la app
+    app.run(host="0.0.0.0", port=puerto, debug=False)
