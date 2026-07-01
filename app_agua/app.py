@@ -2322,7 +2322,7 @@ def nuevo_ingreso_hacienda():
 # ==========================================
 @app.route('/compras/guardar', methods=['POST'])
 def guardar_ingreso_hacienda():
-    # Recibimos los datos que el usuario tipeó en el HTML
+    # Recibimos los datos del formulario web
     fecha_ingreso = request.form.get('fecha_ingreso', '2026-07-01')
     proveedor = request.form.get('proveedor')
     kg_gancho = float(request.form.get('kg_gancho', 0))
@@ -2331,26 +2331,32 @@ def guardar_ingreso_hacienda():
     
     # 🧮 Cálculos automáticos de auditoría para Agustín
     costo_total = kg_gancho * costo_x_kg
-    
-    if kg_gancho > 0:
-        porcentaje_merma = ((kg_gancho - kg_limpios) / kg_gancho) * 100
-    else:
-        porcentaje_merma = 0.0
+    porcentaje_merma = ((kg_gancho - kg_limpios) / kg_gancho) * 100 if kg_gancho > 0 else 0.0
         
-    # Guardamos el registro definitivo en tu archivo local SQLite
-    con = sqlite3.connect("database.db")
-    cur = con.cursor()
-    
-    cur.execute("""
-        INSERT INTO compras_hacienda (fecha_ingreso, proveedor, kg_gancho, costo_x_kg, costo_total, kg_limpios, porcentaje_merma)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, (fecha_ingreso, proveedor, kg_gancho, costo_x_kg, costo_total, kg_limpios, porcentaje_merma))
-    
-    con.commit()
-    con.close()
+    # ☁️ CONEXIÓN DIRECTA A SUPABASE (Reemplazamos sqlite3 por tu función cloud)
+    try:
+        con = get_db_cloud() # Tu función espectacular con psycopg2
+        cur = con.cursor()
+        
+        # Usamos %s porque Supabase corre sobre PostgreSQL (en SQLite se usa ?)
+        cur.execute("""
+            INSERT INTO compras_hacienda (fecha_ingreso, proveedor, kg_gancho, costo_x_kg, costo_total, kg_limpios, porcentaje_merma)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """, (fecha_ingreso, proveedor, kg_gancho, costo_x_kg, costo_total, kg_limpios, porcentaje_merma))
+        
+        con.commit()
+        cur.close()
+        con.close()
+        print(f"☁️ Compra mayorista guardada directamente en Supabase.")
+        
+    except Exception as e:
+        print(f"❌ Error crítico de conexión con Supabase: {e}")
+        # Aquí puedes manejar un cartel de error para el usuario si falla la nube
+        return f"Error de conexión con la nube: {e}", 500
     
     # Redirigimos automáticamente al panel de control diario
     return redirect('/auditoria/balance-diario?fecha=' + fecha_ingreso)
+
 # ==========================================
 # 🆕 NUEVA RUTA: Procesador para Cargar los Kilos por Corte
 # ==========================================
