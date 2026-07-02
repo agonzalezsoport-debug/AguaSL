@@ -2007,6 +2007,7 @@ def reporte_ventas():
      
     # ================= VENTAS POR DEPARTAMENTO (CORREGIDO Y PROCESADO) =================
     # 1. Ejecutamos la consulta limpiando los prefijos de promociones de forma segura
+    # Pasamos una lista explícita [desde, hasta] para evitar el error de índices en Postgres
     ejecutar(cur, con, """
     SELECT 
         COALESCE(p.departamento, 'Sin asignar') AS depto,
@@ -2022,7 +2023,7 @@ def reporte_ventas():
     WHERE DATE(v.fecha) BETWEEN %s AND %s
     GROUP BY COALESCE(p.departamento, 'Sin asignar')
     ORDER BY SUM(vi.subtotal) DESC
-    """, params)
+    """, [desde, hasta])
     ventas_departamento_crudas = cur.fetchall()
  
     # 2. Procesamos fila por fila para inyectar costos dinámicos y calcular márgenes sin errores
@@ -2036,7 +2037,7 @@ def reporte_ventas():
         else:
             depto = fila[0]
             cant = fila[1]
-            venta = float(fila[2] or 0.0) # CORREGIDO: El índice 2 contiene el total cobrado
+            venta = float(fila[2] or 0.0)
  
         # ASIGNACIÓN DE COSTOS DE PRUEBA (Ajusta los valores según tu negocio)
         costo = 0.0
@@ -2063,6 +2064,7 @@ def reporte_ventas():
             "ganancia_neta": ganancia,
             "margen": margen
         })
+
 
 
 
