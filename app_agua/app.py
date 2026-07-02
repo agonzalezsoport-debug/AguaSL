@@ -2006,8 +2006,7 @@ def reporte_ventas():
 
      
     # ================= VENTAS POR DEPARTAMENTO (CORREGIDO Y PROCESADO) =================
-    # 1. Ejecutamos la consulta limpiando los prefijos de promociones de forma segura
-    # Usamos cur.execute de forma nativa para evitar que la función auxiliar altere los índices en Postgres
+    # 1. Ejecutamos la consulta usando LEFT() en lugar de LIKE para evitar problemas con RealDictCursor en Postgres
     query_depto = """
     SELECT 
         COALESCE(p.departamento, 'Sin asignar') AS depto,
@@ -2017,7 +2016,7 @@ def reporte_ventas():
     JOIN venta_items vi ON v.id = vi.venta_id
     LEFT JOIN productos p ON 
         CASE 
-            WHEN vi.producto_id LIKE 'promo_%' THEN SUBSTR(vi.producto_id, 7)
+            WHEN LEFT(vi.producto_id, 6) = 'promo_' THEN SUBSTR(vi.producto_id, 7)
             ELSE vi.producto_id 
         END = p.id
     WHERE DATE(v.fecha) BETWEEN %s AND %s
@@ -2040,10 +2039,14 @@ def reporte_ventas():
             depto = fila.get("depto", "Sin asignar")
             cant = fila.get("cant", 0)
             venta = float(fila.get("venta_total", 0.0))
+        elif hasattr(fila, "keys"): # Doble verificación para cursores SQLite de tipo Row
+            depto = fila["depto"]
+            cant = fila["cant"]
+            venta = float(fila["venta_total"] or 0.0)
         else:
-            depto = fila[0]
-            cant = fila[1]
-            venta = float(fila[2] or 0.0)
+            depto = fila
+            cant = fila
+            venta = float(fila or 0.0)
  
         # ASIGNACIÓN DE COSTOS DE PRUEBA (Ajusta los valores según tu negocio)
         costo = 0.0
@@ -2070,6 +2073,7 @@ def reporte_ventas():
             "ganancia_neta": ganancia,
             "margen": margen
         })
+
 
 
 
