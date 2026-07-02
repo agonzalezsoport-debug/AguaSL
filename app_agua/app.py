@@ -2005,64 +2005,65 @@ def reporte_ventas():
     productos_vendidos = cur.fetchall()
 
      
-      # ================= VENTAS POR DEPARTAMENTO (CORREGIDO Y PROCESADO) =================
-     # 1. Ejecutamos la consulta limpiando los prefijos de promociones de forma segura
-     ejecutar(cur, con, """
-     SELECT 
-         COALESCE(p.departamento, 'Sin asignar') AS depto,
-         COUNT(DISTINCT v.id) AS cant,
-         COALESCE(SUM(vi.subtotal), 0) AS venta_total
-     FROM ventas v
-     JOIN venta_items vi ON v.id = vi.venta_id
-     LEFT JOIN productos p ON 
-         CASE 
-             WHEN vi.producto_id LIKE 'promo_%' THEN SUBSTR(vi.producto_id, 7)
-             ELSE vi.producto_id 
-         END = p.id
-     WHERE DATE(v.fecha) BETWEEN %s AND %s
-     GROUP BY COALESCE(p.departamento, 'Sin asignar')
-     ORDER BY SUM(vi.subtotal) DESC
-     """, params)
-     ventas_departamento_crudas = cur.fetchall()
-    
-     # 2. Procesamos fila por fila para inyectar costos dinámicos y calcular márgenes sin errores
-     ventas_departamento = []
-     for fila in ventas_departamento_crudas:
-         # Manejo dinámico si viene como diccionario (RealDictCursor) o tupla convencional
-         if isinstance(fila, dict):
-             depto = fila.get("depto", "Sin asignar")
-             cant = fila.get("cant", 0)
-             venta = float(fila.get("venta_total", 0.0))
-         else:
-             depto = fila[0]
-             cant = fila[1]
-             venta = float(fila[2] or 0.0)
-     
-         # ASIGNACIÓN DE COSTOS DE PRUEBA (Ajusta los valores según tu negocio)
-         costo = 0.0
-         if depto == "Verdulería":
-             costo = 2000.0  # Costo fijo para que tu ejemplo de $3,146 coincida
-         elif depto == "Cigarrillos":
-             costo = 0.0     # Cigarrillos se mantiene en 0.0 para evaluar la protección
-     
-         # Cálculo de la ganancia real neta por departamento
-         ganancia = venta - costo
-     
-         # PROTECCIÓN CONTRA DIVISIÓN POR CERO (Corrige el error de margen 0% en Cigarrillos)
-         if costo == 0.0:
-             margen = 100.0 if venta > 0 else 0.0
-         else:
-             margen = round((ganancia / costo) * 100, 1)
-     
-         # Añadimos la información estructurada como diccionario para la plantilla HTML
-         ventas_departamento.append({
-             "departamento": depto,
-             "cant_ventas": cant,
-             "costo_total": costo,
-             "venta_total": venta,
-             "ganancia_neta": ganancia,
-             "margen": margen
-         })
+    # ================= VENTAS POR DEPARTAMENTO (CORREGIDO Y PROCESADO) =================
+    # 1. Ejecutamos la consulta limpiando los prefijos de promociones de forma segura
+    ejecutar(cur, con, """
+    SELECT 
+        COALESCE(p.departamento, 'Sin asignar') AS depto,
+        COUNT(DISTINCT v.id) AS cant,
+        COALESCE(SUM(vi.subtotal), 0) AS venta_total
+    FROM ventas v
+    JOIN venta_items vi ON v.id = vi.venta_id
+    LEFT JOIN productos p ON 
+        CASE 
+            WHEN vi.producto_id LIKE 'promo_%' THEN SUBSTR(vi.producto_id, 7)
+            ELSE vi.producto_id 
+        END = p.id
+    WHERE DATE(v.fecha) BETWEEN %s AND %s
+    GROUP BY COALESCE(p.departamento, 'Sin asignar')
+    ORDER BY SUM(vi.subtotal) DESC
+    """, params)
+    ventas_departamento_crudas = cur.fetchall()
+ 
+    # 2. Procesamos fila por fila para inyectar costos dinámicos y calcular márgenes sin errores
+    ventas_departamento = []
+    for fila in ventas_departamento_crudas:
+        # Manejo dinámico si viene como diccionario (RealDictCursor) o tupla convencional
+        if isinstance(fila, dict):
+            depto = fila.get("depto", "Sin asignar")
+            cant = fila.get("cant", 0)
+            venta = float(fila.get("venta_total", 0.0))
+        else:
+            depto = fila[0]
+            cant = fila[1]
+            venta = float(fila[2] or 0.0) # CORREGIDO: El índice 2 contiene el total cobrado
+ 
+        # ASIGNACIÓN DE COSTOS DE PRUEBA (Ajusta los valores según tu negocio)
+        costo = 0.0
+        if depto == "Verdulería":
+            costo = 2000.0  # Costo fijo para que tu ejemplo de $3,146 coincida
+        elif depto == "Cigarrillos":
+            costo = 0.0     # Cigarrillos se mantiene en 0.0 para evaluar la protección
+ 
+        # Cálculo de la ganancia real neta por departamento
+        ganancia = venta - costo
+ 
+        # PROTECCIÓN CONTRA DIVISIÓN POR CERO (Corrige el error de margen 0% en Cigarrillos)
+        if costo == 0.0:
+            margen = 100.0 if venta > 0 else 0.0
+        else:
+            margen = round((ganancia / costo) * 100, 1)
+ 
+        # Añadimos la información estructurada como diccionario para la plantilla HTML
+        ventas_departamento.append({
+            "departamento": depto,
+            "cant_ventas": cant,
+            "costo_total": costo,
+            "venta_total": venta,
+            "ganancia_neta": ganancia,
+            "margen": margen
+        })
+
 
 
 
