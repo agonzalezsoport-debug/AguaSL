@@ -409,6 +409,29 @@ def sync_venta_to_cloud(venta_id, fecha, total, recargo, descuento, total_final,
             item_fixed = dict(item)
             item_fixed["venta_id"] = venta_id
             save_offline("venta_items", "insert", item_fixed)
+ @app.route("/api/obtener_productos_stock")
+def obtener_productos_stock():
+    con = get_db()
+    cur = con.cursor()
+    try:
+        ejecutar(cur, con, "SELECT id, codigo, descripcion, stock, precio FROM productos")
+        filas = cur.fetchall()
+        con.close()
+        
+        productos = []
+        for r in filas:
+            if isinstance(r, dict):
+                productos.append(dict(r))
+            else:
+                productos.append({
+                    "id": r[0], "codigo": r[1], "descripcion": r[2], 
+                    "stock": int(r[3] or 0), "precio": float(r[4] or 0)
+                })
+        return jsonify(productos)
+    except Exception as e:
+        if con: con.close()
+        return jsonify([]), 500
+           
             
 
             
