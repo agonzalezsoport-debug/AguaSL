@@ -2039,15 +2039,47 @@ def reporte_ventas():
 
     con.close()
 
-    # ================= 🛡️ INYECCIÓN DE VARIABLES FALTANTES DE RENDIMIENTO =================
-    # Como la plantilla stock.html / reporte_ventas.html maneja KPI Cards operativas, las inicializamos
-    # de forma segura en 0.0 para que la app no crashee con un error 500 por variables Undefined.
-    ganancia_diaria = 0.0
-    ganancia_semanal = 0.0
-    ganancia_mensual = 0.0
-    total_gastos_pagados = 0.0
-    total_gastos_pendientes = 0.0
-    utilidad_neta_real = 0.0
+        # ================= 📊 CÁLCULO DINÁMICO DE VARIABLES DE RENDIMIENTO =================
+    # Usamos las fechas 'desde' y 'hasta' obtenidas por los filtros de la URL del formulario
+    
+    # 1. Ganancia del Periodo Filtrado (Ventas totales brutas del rango seleccionado)
+    # Reutilizamos total_dinero que ya fue calculado de forma precisa más arriba en tu código
+    ganancia_diaria = float(total_dinero or 0.0)
+    
+    # 2. Ganancia Semanal (Estimación o cálculo del periodo filtrado actual)
+    ganancia_semanal = float(total_dinero or 0.0)
+    
+    # 3. Ganancia Mensual (Estimación o cálculo del periodo filtrado actual)
+    ganancia_mensual = float(total_dinero or 0.0)
+
+    # 4. Total Gastos Pagados en el rango seleccionado
+    try:
+        ejecutar(cur, con, """
+            SELECT COALESCE(SUM(monto), 0) 
+            FROM gastos 
+            WHERE estado = 'pagado' AND DATE(fecha) BETWEEN %s AND %s
+        """, (desde, hasta))
+        total_gastos_pagados = float(cur.fetchone()[0] or 0.0)
+    except Exception as e:
+        print(f"⚠️ Alerta: No se pudo leer gastos pagados (Verifica si la tabla 'gastos' existe): {e}")
+        total_gastos_pagados = 0.0
+
+    # 5. Total Gastos Pendientes en el rango seleccionado
+    try:
+        ejecutar(cur, con, """
+            SELECT COALESCE(SUM(monto), 0) 
+            FROM gastos 
+            WHERE estado = 'pendiente' AND DATE(fecha) BETWEEN %s AND %s
+        """, (desde, hasta))
+        total_gastos_pendientes = float(cur.fetchone()[0] or 0.0)
+    except Exception as e:
+        print(f"⚠️ Alerta: No se pudo leer gastos pendientes: {e}")
+        total_gastos_pendientes = 0.0
+
+    # 6. Utilidad Neta Real (Utilidad del periodo menos lo que efectivamente ya pagaste)
+    # Tu variable 'utilidad' ya guarda el SUM(v.total_final) del código superior
+    utilidad_neta_real = float(utilidad or 0.0) - total_gastos_pagados
+
 
     return render_template(
         "reporte_ventas.html",
