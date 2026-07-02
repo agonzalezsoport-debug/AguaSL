@@ -2007,8 +2007,8 @@ def reporte_ventas():
      
     # ================= VENTAS POR DEPARTAMENTO (CORREGIDO Y PROCESADO) =================
     # 1. Ejecutamos la consulta limpiando los prefijos de promociones de forma segura
-    # Pasamos una lista explícita [desde, hasta] para evitar el error de índices en Postgres
-    ejecutar(cur, con, """
+    # Usamos cur.execute de forma nativa para evitar que la función auxiliar altere los índices en Postgres
+    query_depto = """
     SELECT 
         COALESCE(p.departamento, 'Sin asignar') AS depto,
         COUNT(DISTINCT v.id) AS cant,
@@ -2023,7 +2023,13 @@ def reporte_ventas():
     WHERE DATE(v.fecha) BETWEEN %s AND %s
     GROUP BY COALESCE(p.departamento, 'Sin asignar')
     ORDER BY SUM(vi.subtotal) DESC
-    """, [desde, hasta])
+    """
+    
+    # Si por alguna razón corre local con SQLite, adaptamos el marcador a ?
+    if isinstance(con, sqlite3.Connection):
+        query_depto = query_depto.replace("%s", "?")
+        
+    cur.execute(query_depto, [desde, hasta])
     ventas_departamento_crudas = cur.fetchall()
  
     # 2. Procesamos fila por fila para inyectar costos dinámicos y calcular márgenes sin errores
