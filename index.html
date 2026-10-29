@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Rondines Centralizado</title>
+    <script src="https://unpkg.com" type="text/javascript"></script>
+    <script src="https://cloudflare.com"></script>
+    <style>
+        body { font-family: 'Segoe UI', Arial, sans-serif; background-color: #eef2f7; margin: 0; padding: 15px; display: flex; flex-direction: column; align-items: center; }
+        .container { max-width: 600px; width: 100%; background: #ffffff; padding: 20px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.08); box-sizing: border-box; }
+        h2 { text-align: center; color: #1e293b; margin-top: 0; }
+        .tabs { display: flex; margin-bottom: 20px; border-bottom: 2px solid #cbd5e1; }
+        .tab { flex: 1; text-align: center; padding: 10px; cursor: pointer; font-weight: bold; color: #64748b; }
+        .tab.active { color: #2563eb; border-bottom: 3px solid #2563eb; }
+        .panel { display: none; }
+        .panel.active { display: block; }
+        #reader { width: 100%; background: #0f172a; border-radius: 8px; overflow: hidden; }
+        .btn { background-color: #2563eb; color: white; border: none; padding: 12px; font-size: 15px; border-radius: 6px; cursor: pointer; width: 100%; margin-top: 10px; font-weight: bold; }
+        .btn-success { background-color: #10b981; }
+        .btn-danger { background-color: #ef4444; margin-top: 20px; }
+        #status { margin-top: 15px; padding: 12px; border-radius: 6px; font-weight: bold; display: none; text-align: center; }
+        .success { background-color: #dcfce7; color: #15803d; }
+        .error { background-color: #f8d7da; color: #721c24; }
+        .table-container { overflow-x: auto; margin-top: 15px; max-height: 300px; }
+        table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        th, td { padding: 10px; text-align: left; border-bottom: 1px solid #e2e8f0; }
+        th { background-color: #f1f5f9; color: #475569; position: sticky; top: 0; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: 500; color: #334155; }
+        select { width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; box-sizing: border-box; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>🛡️ Control de Rondín</h2>
+    
+    <div class="tabs">
+        <div class="tab active" onclick="switchTab('escaner')">📷 Escanear</div>
+        <div class="tab" onclick="switchTab('reportes')">📊 Reportes y Exportación</div>
+    </div>
+
+    <!-- PANEL DE ESCANEO -->
+    <div id="panel-escaner" class="panel active">
+        <div class="form-group">
+            <label for="guardia">Nombre del Guardia:</label>
+            <select id="guardia">
+                <option value="Juan Pérez">Juan Pérez</option>
+                <option value="Carlos Gómez">Carlos Gómez</option>
+                <option value="Luis Rodríguez">Luis Rodríguez</option>
+            </select>
+        </div>
+        
+        <div id="reader"></div>
+        <button class="btn" id="start-btn" onclick="iniciarEscaneo()">Activar Cámara</button>
+        <div id="status"></div>
+    </div>
+
+    <!-- PANEL DE REPORTES -->
+    <div id="panel-reportes" class="panel">
+        <button class="btn btn-success" onclick="exportarExcel()">📥 Exportar Rindes a Excel</button>
+        
+        <h3>Historial General de Marcaciones</h3>
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Fecha/Hora</th>
+                        <th>Guardia</th>
+                        <th>Punto QR</th>
+                    </tr>
+                </thead>
+                <tbody id="tabla-registros"></tbody>
+            </table>
+        </div>
+        <button class="btn btn-danger" onclick="borrarHistorial()">⚠️ Borrar Todo el Historial</button>
+    </div>
+</div>
+
+<script>
+    let html5QrcodeScanner;
+
+    function switchTab(tab) {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+        
+        if(tab === 'escaner') {
+            document.querySelector('.tabs .tab:nth-child(1)').classList.add('active');
+            document.getElementById('panel-escaner').classList.add('active');
+        } else {
+            document.querySelector('.tabs .tab:nth-child(2)').classList.add('active');
+            document.getElementById('panel-reportes').classList.add('active');
+            cargarTabla();
+        }
+    }
+
+    function iniciarEscaneo() {
+        document.getElementById('start-btn').style.display = 'none';
+        html5QrcodeScanner = new Html5QrcodeScanner("reader", { 
+            fps: 10, 
+            qrbox: { width: 250, height: 250 },
+            rememberLastUsedCamera: true,
+            supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA]
+        }, false);
+        html5QrcodeScanner.render(onScanSuccess, onScanFailure);
+    }
+
+    function onScanSuccess(decodedText) {
+        html5QrcodeScanner.clear();
+        document.getElementById('start-btn').style.display = 'block';
+        
+        const guardia = document.getElementById('guardia').value;
+        const ahora = new Date();
+        
+        const nuevoRegistro = {
+            fecha_hora: ahora.toLocaleString('es-AR'),
+            guardia: guardia,
+            punto: decodedText
+        };
+
+        // ENVIAR AL SERVIDOR CENTRAL
+        fetch('/api/fichar', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(nuevoRegistro)
+        })
+        .then(res => res.json())
+        .then(data => {
+            if(data.success) {
+                mostrarEstado(`✅ Punto Registrado en Servidor:<br><b>${decodedText}</b><br>Hora: ${nuevoRegistro.fecha_hora}`, "success");
+            } else {
+                mostrarEstado("❌ Error al guardar en el servidor.", "error");
+            }
+        })
+        .catch(err => {
+            mostrarEstado("❌ Error de red de comunicación con el servidor.", "error");
+            console.error(err);
+        });
+    }
+
+    function onScanFailure(error) {}
+
+    function mostrarEstado(mensaje, tipo) {
+        const s = document.getElementById('status');
+        s.style.display = 'block';
+        s.className = tipo;
+        s.innerHTML = mensaje;
+    }
+
+    function cargarTabla() {
+        const tbody = document.getElementById('tabla-registros');
+        tbody.innerHTML = '<tr><td colspan="3">Cargando historial...</td></tr>';
+        
+        fetch('/api/historial')
+        .then(res => res.json())
+        .then(historial => {
+            tbody.innerHTML = '';
+            if(historial.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="3">No hay registros aún.</td></tr>';
+                return;
+            }
+            historial.forEach(r => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `<td>${r.fecha_hora}</td><td>${r.guardia}</td><td>${r.punto}</td>`;
+                tbody.appendChild(tr);
+            });
+        })
+        .catch(err => {
+            tbody.innerHTML = '<tr><td colspan="3">Error al cargar datos.</td></tr>';
+        });
+    }
+
+    function exportarExcel() {
+        fetch('/api/historial')
+        .then(res => res.json())
+        .then(historial => {
+            if(historial.length === 0) {
+                alert("No hay registros para exportar.");
+                return;
+            }
+            const datosFormateados = historial.map(r => ({
+                "Fecha y Hora": r.fecha_hora,
+                "Guardia de Turno": r.guardia,
+                "Punto de Control (QR)": r.punto
+            }));
+            const hoja = XLSX.utils.json_to_sheet(datosFormateados);
+            const libro = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(libro, hoja, "Rondines");
+            XLSX.writeFile(libro, `Rinde_Rondin_${new Date().toISOString().slice(0,10)}.xlsx`);
+        });
+    }
+
+    function borrarHistorial() {
+        if(confirm("¿Está seguro de eliminar TODO el historial general del servidor?")) {
+            fetch('/api/historial', { method: 'DELETE' })
+            .then(() => cargarTabla());
+        }
+    }
+</script>
+</body>
+</html>
